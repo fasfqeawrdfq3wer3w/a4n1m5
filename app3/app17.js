@@ -521,7 +521,25 @@ function renderDetail(item) {
           <div class="detail-meta-item"><div class="val">${item.date ? item.date.slice(0,4) : '—'}</div><div class="lbl">Año</div></div>
         </div>
         <div class="detail-info-list">
-          <div class="detail-info-row"><span>Géneros</span><span>${item.genre}</span></div>
+          <div class="detail-info-row detail-info-genres">
+            <span>Géneros</span>
+            <div class="detail-genres-tags">
+              ${(() => {
+                // Separar el campo genre por " / " para obtener géneros individuales
+                const genres = item.genre.split(' / ').map(g => g.trim());
+                const maxGenres = 3;
+                const visibleGenres = genres.slice(0, maxGenres);
+                const hiddenGenres = genres.slice(maxGenres);
+                
+                let html = visibleGenres.map(g => `<span class="tag">${g}</span>`).join('');
+                if (hiddenGenres.length > 0) {
+                  html += hiddenGenres.map(g => `<span class="tag tag-hidden">${g}</span>`).join('');
+                  html += `<button class="tag-show-more" data-show-genres>Ver más (${hiddenGenres.length})</button>`;
+                }
+                return html;
+              })()}
+            </div>
+          </div>
           <div class="detail-info-row"><span>Estado</span><span>${item.status}</span></div>
           <div class="detail-info-row"><span>Estreno</span><span>${item.date}</span></div>
           <div class="detail-info-row"><span>Fuente</span><span>${item.source}</span></div>
@@ -553,7 +571,7 @@ function renderDetail(item) {
     openMyListModal(item.id);
   });
 
-  // Event listener para botón "Ver más" de tags
+  // Event listeners para botones "Ver más" de tags y géneros
   const showTagsBtn = $('detail-inner').querySelector('[data-show-tags]');
   if (showTagsBtn) {
     showTagsBtn.addEventListener('click', (e) => {
@@ -574,6 +592,33 @@ function renderDetail(item) {
         btn.dataset.expanded = 'false';
       } else {
         // Expandir: mostrar todos los tags
+        allTags.forEach(tag => tag.classList.remove('tag-hidden'));
+        btn.textContent = 'Ver menos';
+        btn.dataset.expanded = 'true';
+      }
+    });
+  }
+
+  const showGenresBtn = $('detail-inner').querySelector('[data-show-genres]');
+  if (showGenresBtn) {
+    showGenresBtn.addEventListener('click', (e) => {
+      const btn = e.target;
+      const container = btn.parentElement;
+      const allTags = Array.from(container.querySelectorAll('.tag')).filter(t => !t.classList.contains('tag-show-more'));
+      const maxVisible = 3;
+      const isExpanded = btn.dataset.expanded === 'true';
+      
+      if (isExpanded) {
+        // Colapsar: ocultar géneros después del máximo
+        allTags.forEach((tag, index) => {
+          if (index >= maxVisible) {
+            tag.classList.add('tag-hidden');
+          }
+        });
+        btn.textContent = `Ver más (${allTags.length - maxVisible})`;
+        btn.dataset.expanded = 'false';
+      } else {
+        // Expandir: mostrar todos los géneros
         allTags.forEach(tag => tag.classList.remove('tag-hidden'));
         btn.textContent = 'Ver menos';
         btn.dataset.expanded = 'true';
