@@ -529,7 +529,15 @@ function renderDetail(item) {
           <div class="detail-meta-item"><div class="val">${item.date ? item.date.slice(0,4) : '—'}</div><div class="lbl">Año</div></div>
         </div>
         <div class="detail-info-list">
-          <div class="detail-info-row"><span>Género</span><span>${item.genre}</span></div>
+          <div class="detail-info-row">
+            <span>Géneros</span>
+            <span class="detail-genres">${(() => {
+              const maxGenres = 3;
+              const visibleGenres = item.tags.slice(0, maxGenres);
+              const remaining = item.tags.length - maxGenres;
+              return visibleGenres.join(', ') + (remaining > 0 ? ` +${remaining}` : '');
+            })()}</span>
+          </div>
           <div class="detail-info-row"><span>Estado</span><span>${item.status}</span></div>
           <div class="detail-info-row"><span>Estreno</span><span>${item.date}</span></div>
           <div class="detail-info-row"><span>Fuente</span><span>${item.source}</span></div>
