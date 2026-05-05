@@ -65,3 +65,19 @@
 
 /* ── Géneros en información de detalle ── */
 .detail-genres{display:block;text-align:right;line-height:1.5;word-wrap:break-word;max-width:60%}
+
+/* ── Tags ocultos y botón Ver más ── */
+.tag-hidden{display:none}
+.tag-show-more{background:rgba(0,230,118,0.12);color:var(--accent);border:1px solid rgba(0,230,118,0.25);border-radius:20px;padding:3px 12px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s;white-space:nowrap}
+.tag-show-more:hover{background:rgba(0,230,118,0.18)}
+.tag-show-more:active{transform:scale(0.95);background:rgba(0,230,118,0.22)}
+.detail-info-genres{align-items:flex-start!important}
+.detail-genres-tags{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;max-width:65%;align-items:center}
+
+/* ── Rediseño de cards de categorías (gris) ── */
+.cat-card{background:linear-gradient(135deg,var(--bg2) 0%,var(--bg3) 100%)!important;border:1px solid rgba(255,255,255,0.08)!important;box-shadow:0 2px 8px rgba(0,0,0,0.3)}
+.cat-card::before{display:none!important}
+.cat-card:hover{box-shadow:0 4px 16px rgba(0,0,0,0.4)}
+.cat-card-icon{background:rgba(255,255,255,0.08)!important;backdrop-filter:blur(8px)}
+.cat-card-info h3{color:var(--text)!important}
+.cat-card-info span{color:var(--text3)!important}
