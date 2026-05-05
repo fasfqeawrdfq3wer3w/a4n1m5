@@ -525,6 +525,7 @@ function renderDetail(item) {
           <div class="detail-meta-item"><div class="val">${item.date ? item.date.slice(0,4) : '—'}</div><div class="lbl">Año</div></div>
         </div>
         <div class="detail-info-list">
+          <div class="detail-info-row"><span>Géneros</span><span>${item.tags.join(', ')}</span></div>
           <div class="detail-info-row"><span>Estado</span><span>${item.status}</span></div>
           <div class="detail-info-row"><span>Estreno</span><span>${item.date}</span></div>
           <div class="detail-info-row"><span>Fuente</span><span>${item.source}</span></div>
@@ -903,6 +904,14 @@ document.addEventListener('click', e => {
 
 const searchInputEl = $('search-input');
 const searchClearEl = $('search-clear');
+
+// Ocultar X nativa del navegador
+if (searchInputEl) {
+  searchInputEl.setAttribute('type', 'text');
+  // Prevenir que el navegador agregue su propia X
+  searchInputEl.addEventListener('search', (e) => e.preventDefault());
+}
+
 searchInputEl.addEventListener('input', debounce(e => {
   const q = e.target.value;
   searchClearEl.classList.toggle('visible', q.length > 0);
