@@ -173,7 +173,13 @@ function cardHTML(item, mini = false) {
         <div class="meta-item"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>${item.source}</div>
       </div>
       <div class="card-desc">${item.description}</div>
-      <div class="tags">${item.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+      <div class="tags">${(() => {
+        const maxTags = 3;
+        const visibleTags = item.tags.slice(0, maxTags);
+        const remaining = item.tags.length - maxTags;
+        return visibleTags.map(t=>`<span class="tag">${t}</span>`).join('') + 
+               (remaining > 0 ? `<span class="tag tag-more">+${remaining} más</span>` : '');
+      })()}</div>
       <div class="card-actions">
         <button class="cta-btn" data-cta="${item.id}">Ver anime</button>
         <button class="mylist-add-btn${(isFav(item.id)||getWatchStatus(item.id))?' in-list':''}" data-mylist="${item.id}" aria-label="Agregar a Mi Lista">
@@ -304,7 +310,13 @@ function searchCardHTML(item, purple = false) {
         <span class="scard-pill">${item.readTime}</span>
         <span class="scard-pill">${item.date ? item.date.slice(0,4) : ''}</span>
       </div>
-      <div class="scard-tags">${item.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+      <div class="scard-tags">${(() => {
+        const maxTags = 3;
+        const visibleTags = item.tags.slice(0, maxTags);
+        const remaining = item.tags.length - maxTags;
+        return visibleTags.map(t=>`<span class="tag">${t}</span>`).join('') + 
+               (remaining > 0 ? `<span class="tag tag-more">+${remaining} más</span>` : '');
+      })()}</div>
     </div>
   </div>`;
 }
@@ -465,6 +477,7 @@ function renderDetail(item) {
       </button>
     </div>
     <div class="detail-img" style="background:${backdropBg(item)}">
+      <div class="detail-poster" style="background:${posterBg(item)}"></div>
       <button class="detail-fav-btn${fav ? ' active' : ''}" id="detail-fav-btn" aria-label="Favorito">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
       </button>
@@ -495,7 +508,13 @@ function renderDetail(item) {
       </div>
 
       <div class="detail-tab-panel" id="tab-synopsis">
-        <div class="detail-tags">${item.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+        <div class="detail-tags">${(() => {
+          const maxTags = 5;
+          const visibleTags = item.tags.slice(0, maxTags);
+          const remaining = item.tags.length - maxTags;
+          return visibleTags.map(t=>`<span class="tag">${t}</span>`).join('') + 
+                 (remaining > 0 ? `<span class="tag tag-more">+${remaining} más</span>` : '');
+        })()}</div>
         <p class="detail-desc">${item.description}</p>
       </div>
 
