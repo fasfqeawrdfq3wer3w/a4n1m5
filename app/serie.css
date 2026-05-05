@@ -1,0 +1,122 @@
+:root{
+  --accent:#00E676;--accent-dim:rgba(0,230,118,0.12);
+  --bg:#0A0A0A;--bg2:#111;--bg3:#1a1a1a;--bg4:#222;
+  --text:#f0f0f0;--text2:#888899;--text3:#444455;
+  --radius:14px;--radius-sm:8px;--transition:0.28s cubic-bezier(0.4,0,0.2,1)
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;font-size:15px;line-height:1.5}
+
+/* Header */
+#serie-header{
+  position:sticky;top:0;z-index:100;height:56px;padding:0 16px;
+  padding-top:env(safe-area-inset-top);
+  display:flex;align-items:center;gap:12px;
+  background:rgba(10,10,10,0.95);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border-bottom:1px solid rgba(255,255,255,0.06)
+}
+.back-btn{
+  background:none;border:none;color:var(--text);cursor:pointer;
+  width:40px;height:40px;display:flex;align-items:center;justify-content:center;
+  border-radius:50%;flex-shrink:0;transition:background var(--transition)
+}
+.back-btn:active{background:var(--bg3)}
+.header-title{
+  font-size:13px;font-weight:600;flex:1;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text2)
+}
+
+/* Tabs temporadas */
+.seasons-wrap{
+  position:sticky;top:56px;z-index:99;
+  background:rgba(10,10,10,0.95);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border-bottom:1px solid rgba(255,255,255,0.07)
+}
+.seasons-tabs{display:flex;overflow-x:auto;scrollbar-width:none;padding:0 16px}
+.seasons-tabs::-webkit-scrollbar{display:none}
+.season-tab{
+  flex:1;padding:12px 8px;font-size:13px;font-weight:600;
+  background:none;color:var(--text3);border:none;border-bottom:2px solid transparent;
+  cursor:pointer;transition:color 0.15s,border-color 0.15s;white-space:nowrap;margin-bottom:-1px;text-align:center
+}
+.season-tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:700}
+.season-tab:active{opacity:0.7}
+
+/* Lista episodios */
+.episodes-list{display:flex;flex-direction:column;gap:8px;padding:12px 16px 32px}
+
+@keyframes ep-fade-in{
+  from{opacity:0;transform:translateY(12px)}
+  to{opacity:1;transform:translateY(0)}
+}
+.episodes-list.season-change .ep-card{
+  opacity:0;
+  animation:ep-fade-in 0.3s cubic-bezier(0.4,0,0.2,1) forwards;
+}
+.episodes-list.season-change .ep-card:nth-child(1){animation-delay:0ms}
+.episodes-list.season-change .ep-card:nth-child(2){animation-delay:120ms}
+.episodes-list.season-change .ep-card:nth-child(3){animation-delay:240ms}
+.episodes-list.season-change .ep-card:nth-child(4){animation-delay:360ms}
+.episodes-list.season-change .ep-card:nth-child(5){animation-delay:480ms}
+.episodes-list.season-change .ep-card:nth-child(6){animation-delay:600ms}
+.episodes-list.season-change .ep-card:nth-child(7){animation-delay:720ms}
+.episodes-list.season-change .ep-card:nth-child(8){animation-delay:840ms}
+.episodes-list.season-change .ep-card:nth-child(n+9){animation-delay:960ms}
+
+/* Card episodio */
+.ep-card{
+  display:flex;align-items:stretch;
+  background:var(--bg2);border-radius:var(--radius);
+  overflow:hidden;cursor:pointer;
+  border:1px solid rgba(255,255,255,0.05);
+  transition:transform 0.15s
+}
+.ep-card:active{transform:scale(0.98)}
+.ep-thumb{width:140px;flex-shrink:0;position:relative;background:var(--bg3);align-self:stretch}
+.ep-thumb-img{position:absolute;inset:0;background-size:cover;background-position:center}
+.ep-thumb-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.ep-thumb-num{
+  position:absolute;bottom:0;left:0;right:0;
+  background:rgba(0,0,0,0.7);text-align:center;
+  font-size:10px;font-weight:800;color:var(--accent);padding:2px 0
+}
+.ep-body{flex:1;min-width:0;padding:10px 12px;display:flex;flex-direction:column;justify-content:center;gap:3px}
+.ep-num{font-size:10px;color:var(--accent);font-weight:700;letter-spacing:0.4px}
+.ep-title{font-size:13px;font-weight:700;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.ep-duration{font-size:11px;color:var(--text3)}
+.ep-synopsis{font-size:11px;color:var(--text2);line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin-top:2px}
+
+/* Switch visto */
+.ep-switch-row{display:flex;align-items:center;gap:8px;margin-top:5px}
+.ep-switch-label{font-size:11px;color:var(--text3);transition:color 0.2s;user-select:none}
+.ep-switch-label.on{color:var(--accent)}
+.ep-switch{position:relative;width:34px;height:20px;flex-shrink:0;cursor:pointer}
+.ep-switch input{opacity:0;width:0;height:0;position:absolute}
+.ep-switch-track{
+  position:absolute;inset:0;border-radius:10px;
+  background:var(--bg4);border:1px solid rgba(255,255,255,0.1);
+  transition:background 0.2s,border-color 0.2s
+}
+.ep-switch input:checked ~ .ep-switch-track{background:var(--accent);border-color:var(--accent)}
+.ep-switch-thumb{
+  position:absolute;top:3px;left:3px;
+  width:14px;height:14px;border-radius:50%;
+  background:#fff;transition:transform 0.2s;pointer-events:none
+}
+.ep-switch input:checked ~ .ep-switch-thumb{transform:translateX(14px)}
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Botón configuración header */
+.cfg-btn{
+  background:none;border:none;color:var(--text2);cursor:pointer;
+  width:40px;height:40px;display:flex;align-items:center;justify-content:center;
+  border-radius:50%;flex-shrink:0;transition:background var(--transition)
+}
+.cfg-btn:active{background:var(--bg3)}
+
+/* Toggle pill (reutilizado del proyecto) */
+.toggle-pill{width:40px;height:22px;border-radius:11px;background:var(--bg4);position:relative;transition:background 0.2s;flex-shrink:0}
+.toggle-pill::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform 0.2s}
+.toggle-pill.active{background:var(--accent)}
+.toggle-pill.active::after{transform:translateX(18px)}
