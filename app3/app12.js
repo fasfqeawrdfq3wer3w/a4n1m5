@@ -173,13 +173,6 @@ function cardHTML(item, mini = false) {
         <div class="meta-item"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>${item.source}</div>
       </div>
       <div class="card-desc">${item.description}</div>
-      <div class="tags">${(() => {
-        const maxTags = 3;
-        const visibleTags = item.tags.slice(0, maxTags);
-        const remaining = item.tags.length - maxTags;
-        return visibleTags.map(t=>`<span class="tag">${t}</span>`).join('') + 
-               (remaining > 0 ? `<span class="tag tag-more">+${remaining} más</span>` : '');
-      })()}</div>
       <div class="card-actions">
         <button class="cta-btn" data-cta="${item.id}">Ver anime</button>
         <button class="mylist-add-btn${(isFav(item.id)||getWatchStatus(item.id))?' in-list':''}" data-mylist="${item.id}" aria-label="Agregar a Mi Lista">
@@ -310,13 +303,6 @@ function searchCardHTML(item, purple = false) {
         <span class="scard-pill">${item.readTime}</span>
         <span class="scard-pill">${item.date ? item.date.slice(0,4) : ''}</span>
       </div>
-      <div class="scard-tags">${(() => {
-        const maxTags = 3;
-        const visibleTags = item.tags.slice(0, maxTags);
-        const remaining = item.tags.length - maxTags;
-        return visibleTags.map(t=>`<span class="tag">${t}</span>`).join('') + 
-               (remaining > 0 ? `<span class="tag tag-more">+${remaining} más</span>` : '');
-      })()}</div>
     </div>
   </div>`;
 }
@@ -431,11 +417,17 @@ function renderFavorites() {
 function renderProfile() {
   const favCount = favs.length;
   $('fav-badge-profile').textContent = favCount;
+  
+  // Contar categorías visibles (incluir H solo si está habilitado)
+  const visibleCategories = hCatEnabled 
+    ? CATS_CFG.map(c => c.name) 
+    : CATS_CFG.filter(c => !c.isH).map(c => c.name);
+  
   const stats = $('profile-stats');
   stats.innerHTML = `
-    <div class="stat-item"><div class="stat-num">${DATA.length}</div><div class="stat-label">Series</div></div>
+    <div class="stat-item"><div class="stat-num">${visibleDATA().length}</div><div class="stat-label">Series</div></div>
     <div class="stat-item"><div class="stat-num">${favCount}</div><div class="stat-label">Favoritos</div></div>
-    <div class="stat-item"><div class="stat-num">${CATEGORIES.length}</div><div class="stat-label">Géneros</div></div>
+    <div class="stat-item"><div class="stat-num">${visibleCategories.length}</div><div class="stat-label">Géneros</div></div>
   `;
   const pill = $('h-toggle-pill');
   if (pill) pill.classList.toggle('active', hCatEnabled);
@@ -533,22 +525,6 @@ function renderDetail(item) {
           <div class="detail-meta-item"><div class="val">${item.date ? item.date.slice(0,4) : '—'}</div><div class="lbl">Año</div></div>
         </div>
         <div class="detail-info-list">
-          <div class="detail-info-row detail-info-genres">
-            <span>Géneros</span>
-            <div class="detail-genres-tags">
-              ${(() => {
-                const maxGenres = 3;
-                const visibleGenres = item.tags.slice(0, maxGenres);
-                const hiddenGenres = item.tags.slice(maxGenres);
-                let html = visibleGenres.map(t => `<span class="tag">${t}</span>`).join('');
-                if (hiddenGenres.length > 0) {
-                  html += hiddenGenres.map(t => `<span class="tag tag-hidden">${t}</span>`).join('');
-                  html += `<button class="tag-show-more" data-show-genres>Ver más (${hiddenGenres.length})</button>`;
-                }
-                return html;
-              })()}
-            </div>
-          </div>
           <div class="detail-info-row"><span>Estado</span><span>${item.status}</span></div>
           <div class="detail-info-row"><span>Estreno</span><span>${item.date}</span></div>
           <div class="detail-info-row"><span>Fuente</span><span>${item.source}</span></div>
@@ -580,41 +556,28 @@ function renderDetail(item) {
     openMyListModal(item.id);
   });
 
-  // Event listeners para botones "Ver más" de tags y géneros
+  // Event listeners para botones "Ver más" de tags
   const showTagsBtn = $('detail-inner').querySelector('[data-show-tags]');
   if (showTagsBtn) {
     showTagsBtn.addEventListener('click', (e) => {
       const btn = e.target;
       const container = btn.parentElement;
-      const hiddenTags = container.querySelectorAll('.tag-hidden');
+      const allTags = Array.from(container.querySelectorAll('.tag')).filter(t => !t.classList.contains('tag-show-more'));
+      const maxVisible = 5;
       const isExpanded = btn.dataset.expanded === 'true';
       
       if (isExpanded) {
-        hiddenTags.forEach(tag => tag.classList.add('tag-hidden'));
-        btn.textContent = `Ver más (${hiddenTags.length})`;
+        // Colapsar: ocultar tags después del máximo
+        allTags.forEach((tag, index) => {
+          if (index >= maxVisible) {
+            tag.classList.add('tag-hidden');
+          }
+        });
+        btn.textContent = `Ver más (${allTags.length - maxVisible})`;
         btn.dataset.expanded = 'false';
       } else {
-        hiddenTags.forEach(tag => tag.classList.remove('tag-hidden'));
-        btn.textContent = 'Ver menos';
-        btn.dataset.expanded = 'true';
-      }
-    });
-  }
-
-  const showGenresBtn = $('detail-inner').querySelector('[data-show-genres]');
-  if (showGenresBtn) {
-    showGenresBtn.addEventListener('click', (e) => {
-      const btn = e.target;
-      const container = btn.parentElement;
-      const hiddenGenres = container.querySelectorAll('.tag-hidden');
-      const isExpanded = btn.dataset.expanded === 'true';
-      
-      if (isExpanded) {
-        hiddenGenres.forEach(tag => tag.classList.add('tag-hidden'));
-        btn.textContent = `Ver más (${hiddenGenres.length})`;
-        btn.dataset.expanded = 'false';
-      } else {
-        hiddenGenres.forEach(tag => tag.classList.remove('tag-hidden'));
+        // Expandir: mostrar todos los tags
+        allTags.forEach(tag => tag.classList.remove('tag-hidden'));
         btn.textContent = 'Ver menos';
         btn.dataset.expanded = 'true';
       }
