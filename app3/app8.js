@@ -904,6 +904,8 @@ function init() {
   document.getElementById('h-toggle-item').addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
+    e.stopImmediatePropagation();
+    
     if (hCatEnabled) {
       hCatEnabled = false;
       applyHToggle();
@@ -912,6 +914,8 @@ function init() {
       o.classList.add('open');
       o.setAttribute('aria-hidden', 'false');
     }
+    
+    return false;
   });
 
   document.getElementById('h-confirm-accept').addEventListener('click', () => {
