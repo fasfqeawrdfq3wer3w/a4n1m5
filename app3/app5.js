@@ -901,7 +901,9 @@ function init() {
     if (state.view === 'all-library') renderAllLibrary();
   }
 
-  document.getElementById('h-toggle-item').addEventListener('click', () => {
+  document.getElementById('h-toggle-item').addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     if (hCatEnabled) {
       hCatEnabled = false;
       applyHToggle();
