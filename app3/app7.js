@@ -914,15 +914,6 @@ function init() {
     }
   });
 
-  // Prevenir cualquier comportamiento por defecto en todo el contenedor de Contenido H
-  document.getElementById('h-toggle-item').addEventListener('mousedown', (e) => {
-    e.preventDefault();
-  });
-  
-  document.getElementById('h-toggle-item').addEventListener('touchstart', (e) => {
-    e.preventDefault();
-  });
-
   document.getElementById('h-confirm-accept').addEventListener('click', () => {
     hCatEnabled = true;
     const o = $('h-confirm-overlay');
