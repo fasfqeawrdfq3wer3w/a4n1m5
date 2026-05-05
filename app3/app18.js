@@ -525,8 +525,19 @@ function renderDetail(item) {
             <span>Géneros</span>
             <div class="detail-genres-tags">
               ${(() => {
-                // Separar el campo genre por " / " para obtener géneros individuales
-                const genres = item.genre.split(' / ').map(g => g.trim());
+                // Separar el campo genre por diferentes separadores posibles
+                let genres = [];
+                if (item.genre.includes(' / ')) {
+                  genres = item.genre.split(' / ').map(g => g.trim());
+                } else if (item.genre.includes('/')) {
+                  genres = item.genre.split('/').map(g => g.trim());
+                } else if (item.genre.includes(',')) {
+                  genres = item.genre.split(',').map(g => g.trim());
+                } else {
+                  // Si no hay separador, es un solo género
+                  genres = [item.genre];
+                }
+                
                 const maxGenres = 3;
                 const visibleGenres = genres.slice(0, maxGenres);
                 const hiddenGenres = genres.slice(maxGenres);
