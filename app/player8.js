@@ -262,7 +262,20 @@
 
     // HLS o src directo
     if ((videoType === 'hls' || isHLS(url)) && window.Hls && window.Hls.isSupported()) {
-      hlsInstance = new window.Hls({ maxBufferLength: 30 });
+      const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+      hlsInstance = new window.Hls({
+        maxBufferLength:       isMobile ? 10  : 30,
+        maxMaxBufferLength:    isMobile ? 20  : 60,
+        maxBufferSize:         isMobile ? 20 * 1000 * 1000 : 60 * 1000 * 1000, // 20MB / 60MB
+        maxBufferHole:         0.5,
+        // En móvil arrancar en la calidad más baja y subir despacio
+        startLevel:            isMobile ? 0   : -1,  // -1 = auto
+        abrEwmaDefaultEstimate: isMobile ? 500000 : 1500000, // estimación inicial de ancho de banda
+        abrBandWidthFactor:    isMobile ? 0.7 : 0.9,
+        abrBandWidthUpFactor:  isMobile ? 0.5 : 0.7,
+        capLevelToPlayerSize:  true,  // no cargar calidad mayor al tamaño del player
+        autoStartLoad:         true,
+      });
       hlsInstance.loadSource(url);
       hlsInstance.attachMedia(v);
     } else if ((videoType === 'hls' || isHLS(url)) && v.canPlayType('application/vnd.apple.mpegurl')) {
