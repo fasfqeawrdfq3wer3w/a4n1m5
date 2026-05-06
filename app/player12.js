@@ -3,6 +3,16 @@
 
   const $ = id => document.getElementById(id);
 
+  // UA de escritorio para que los servidores sirvan contenido de mayor calidad
+  const DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+  function proxyFetch(url, timeoutMs) {
+    const proxy = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url)
+                + '&user_agent=' + encodeURIComponent(DESKTOP_UA);
+    const opts = timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {};
+    return fetch(proxy, opts).then(r => r.json());
+  }
+
   function isDirectVideo(url) {
     // Extensión al final o tipo en el path (ej: /m3u8/hash, /mp4/hash)
     return /\.(mp4|webm|ogg|m3u8)(\?.*)?$/i.test(url) ||
@@ -28,10 +38,7 @@
     // Intentar HEAD request directo (sin proxy) para ver Content-Type
     return fetch(url, { method: 'HEAD', mode: 'no-cors' })
       .then(() => {
-        // no-cors no expone headers, así que intentamos GET con el proxy
-        const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
-        return fetch(proxyUrl, { signal: AbortSignal.timeout(5000) })
-          .then(r => r.json())
+        return proxyFetch(url, 5000)
           .then(data => {
             const ct = (data.content_type || '').toLowerCase();
             if (ct.includes('mpegurl') || ct.includes('x-mpegurl') || ct.includes('m3u8')) return 'hls';
@@ -50,9 +57,7 @@
     if (!url) return Promise.resolve('');
     if (!server.deobfuscate) return Promise.resolve(url);
 
-    const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
-    return fetch(proxyUrl)
-      .then(r => r.json())
+    return proxyFetch(url)
       .then(data => {
         let code = data.contents || '';
         if (!code) return url;
@@ -246,8 +251,12 @@
 
   // ── Reproductor nativo ligero ─────────────────────────────
   function buildVideoPlayer(wrap, url, poster, videoType) {
+    // HLS ya fue destruido en renderPlayer; solo limpiar si hay contenido residual
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
-    wrap.innerHTML = '';
+    // Limpiar solo nodos que no sean el loader (ya visible)
+    Array.from(wrap.children).forEach(c => {
+      if (!c.classList.contains('vp-loading')) c.remove();
+    });
 
     const container = document.createElement('div');
     container.className = 'vp-wrap';
@@ -492,19 +501,52 @@
 
     // ── Continuar viendo ──
     let saveInterval = null;
+    let pendingResume = 0; // tiempo a restaurar cuando el video esté listo
+
+    function applyResume(t) {
+      // readyState >= 1 (HAVE_METADATA) y duration conocida → puede hacer seek
+      if (v.duration > 0 && isFinite(v.duration)) {
+        v.currentTime = t;
+        pendingResume = 0;
+      } else {
+        // Reintentar cuando haya metadata
+        pendingResume = t;
+      }
+    }
+
     v.addEventListener('loadedmetadata', () => {
       const saved = getSavedTime(url);
       if (saved > 0 && v.duration > 0 && saved < v.duration * 0.95) {
         showResumeToast(
           saved,
-          () => { v.currentTime = saved; },
+          () => applyResume(saved),
           () => {}
         );
+      } else if (pendingResume > 0) {
+        applyResume(pendingResume);
       }
       saveInterval = setInterval(() => {
         if (!v.paused && !v.ended) saveProgress(url, v.currentTime, v.duration);
       }, 5000);
     });
+
+    // Para HLS: duration puede llegar tarde, reintentar el seek pendiente
+    v.addEventListener('durationchange', () => {
+      if (pendingResume > 0 && v.duration > 0 && isFinite(v.duration)) {
+        if (pendingResume < v.duration * 0.95) {
+          v.currentTime = pendingResume;
+        }
+        pendingResume = 0;
+      }
+    });
+
+    // Fallback: si al primer canplay aún hay seek pendiente, aplicarlo
+    v.addEventListener('canplay', () => {
+      if (pendingResume > 0 && v.duration > 0) {
+        if (pendingResume < v.duration * 0.95) v.currentTime = pendingResume;
+        pendingResume = 0;
+      }
+    }, { once: true });
     v.addEventListener('ended', () => {
       clearInterval(saveInterval);
       localStorage.removeItem(resumeKey(url));
@@ -692,14 +734,16 @@
     const ep   = window.EPISODE;
     const wrap = $('player-wrap');
 
-    if (animate) { wrap.classList.remove('loaded'); wrap.classList.add('switching'); }
+    // Destruir HLS anterior inmediatamente para liberar recursos
+    if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+
+    // Mostrar loader ANTES de limpiar el contenido, así nunca hay pantalla negra
+    wrap.innerHTML = '';
+    wrap.classList.remove('loaded', 'switching');
+    const loader = createLoadingOverlay(wrap);
 
     const doRender = () => {
-      wrap.innerHTML = '';
-      wrap.classList.remove('switching');
-
       const server = ep.langs[activeLang].servers[activeServer];
-      const loader = createLoadingOverlay(wrap);
 
       resolveUrl(server).then(resolved => {
         const url    = typeof resolved === 'object' ? resolved.url    : resolved;
@@ -717,17 +761,14 @@
         }
 
         if (isDirectVideo(url)) {
-          // Extensión reconocible: usar reproductor nativo directamente
           loader.hide();
           buildVideoPlayer(wrap, url, poster, isHLS(url) ? 'hls' : 'mp4');
         } else if (/^https?:\/\//i.test(url)) {
-          // URL sin extensión reconocible: detectar tipo por Content-Type / contenido
           detectVideoType(url).then(videoType => {
             loader.hide();
             if (videoType === 'hls' || videoType === 'mp4') {
               buildVideoPlayer(wrap, url, poster, videoType);
             } else {
-              // Es un player embed o no se pudo detectar → iframe
               loadIframe(wrap, url, server, loader);
             }
           });
@@ -748,7 +789,8 @@
       });
     };
 
-    animate ? setTimeout(doRender, 150) : doRender();
+    // El loader ya está visible, el delay solo es para la animación de salida
+    animate ? setTimeout(doRender, 120) : doRender();
   }
 
   document.addEventListener('DOMContentLoaded', init);
