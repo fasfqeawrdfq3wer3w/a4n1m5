@@ -264,74 +264,93 @@
     if ((videoType === 'hls' || isHLS(url)) && window.Hls && window.Hls.isSupported()) {
       const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
       hlsInstance = new window.Hls({
-        maxBufferLength:          isMobile ? 8   : 30,
-        maxMaxBufferLength:       isMobile ? 16  : 60,
-        maxBufferSize:            isMobile ? 15 * 1000 * 1000 : 60 * 1000 * 1000,
-        maxBufferHole:            0.3,
-        highBufferWatchdogPeriod: 1,
-        nudgeOffset:              0.2,
-        nudgeMaxRetry:            5,
-        // Arrancar en calidad baja en móvil y subir despacio
-        startLevel:               isMobile ? 0  : -1,
-        abrEwmaDefaultEstimate:   isMobile ? 300000 : 1500000,
-        abrBandWidthFactor:       isMobile ? 0.6 : 0.9,
-        abrBandWidthUpFactor:     isMobile ? 0.4 : 0.7,
-        abrEwmaFastLive:          isMobile ? 2   : 3,
-        abrEwmaSlowLive:          isMobile ? 4   : 9,
-        capLevelToPlayerSize:     true,
-        // Reintentos agresivos en errores de fragmento
-        fragLoadingMaxRetry:      6,
-        fragLoadingRetryDelay:    500,
-        fragLoadingMaxRetryTimeout: 4000,
-        manifestLoadingMaxRetry:  3,
-        levelLoadingMaxRetry:     4,
-        autoStartLoad:            true,
+        maxBufferLength:            isMobile ? 6   : 30,
+        maxMaxBufferLength:         isMobile ? 12  : 60,
+        maxBufferSize:              isMobile ? 10 * 1000 * 1000 : 60 * 1000 * 1000,
+        maxBufferHole:              0.5,
+        highBufferWatchdogPeriod:   1,
+        nudgeOffset:                0.3,
+        nudgeMaxRetry:              8,
+        startLevel:                 isMobile ? 0  : -1,
+        abrEwmaDefaultEstimate:     isMobile ? 200000 : 1500000,
+        abrBandWidthFactor:         isMobile ? 0.5 : 0.9,
+        abrBandWidthUpFactor:       isMobile ? 0.3 : 0.7,
+        capLevelToPlayerSize:       true,
+        fragLoadingMaxRetry:        8,
+        fragLoadingRetryDelay:      300,
+        fragLoadingMaxRetryTimeout: 3000,
+        manifestLoadingMaxRetry:    4,
+        levelLoadingMaxRetry:       4,
+        autoStartLoad:              true,
       });
       hlsInstance.loadSource(url);
       hlsInstance.attachMedia(v);
 
-      if (isMobile) {
-        // Bajar calidad automáticamente si hay rebuffering frecuente
-        let stallCount = 0, lastStallTime = 0;
-        const onStall = () => {
-          const now = Date.now();
-          if (now - lastStallTime < 8000) stallCount++;
-          else stallCount = 1;
-          lastStallTime = now;
-          // 2 trabadas en menos de 8s → bajar un nivel de calidad
-          if (stallCount >= 2 && hlsInstance) {
-            const cur = hlsInstance.currentLevel;
-            if (cur > 0) {
-              hlsInstance.currentLevel = cur - 1;
-              stallCount = 0;
-            }
-          }
-        };
-        v.addEventListener('waiting', onStall);
-        v.addEventListener('stalled', onStall);
+      // ── Watchdog: detecta video congelado y fuerza recovery ──
+      let lastTime = 0, frozenMs = 0, mediaErrCount = 0;
+      let stallLevel = -1; // nivel al que se bajó por stall
+      const FROZEN_THRESHOLD = 1500; // ms sin avanzar antes de actuar
+      const watchdog = setInterval(() => {
+        if (v.paused || v.ended || !hlsInstance) return;
+        if (v.currentTime !== lastTime) {
+          lastTime = v.currentTime;
+          frozenMs = 0;
+          return;
+        }
+        frozenMs += 500;
+        if (frozenMs < FROZEN_THRESHOLD) return;
+        frozenMs = 0;
 
-        // Recovery: si lleva >2s trabado y hay buffer disponible, nudge
-        v.addEventListener('waiting', () => {
-          setTimeout(() => {
-            if (!v.paused && v.readyState < 3 && v.buffered.length) {
-              const ahead = v.buffered.end(v.buffered.length - 1) - v.currentTime;
-              if (ahead > 0.5) {
-                v.currentTime += 0.1; // micro-salto para desatascar
-              }
-            }
-          }, 2000);
+        // Paso 1: hay buffer adelante → micro-salto para desatascar el decoder
+        if (v.buffered.length) {
+          const ahead = v.buffered.end(v.buffered.length - 1) - v.currentTime;
+          if (ahead > 0.3) {
+            v.currentTime += 0.2;
+            return;
+          }
+        }
+
+        // Paso 2: bajar calidad si no estamos ya en la más baja
+        const cur = hlsInstance.currentLevel;
+        if (cur > 0) {
+          stallLevel = cur - 1;
+          hlsInstance.currentLevel = stallLevel;
+          hlsInstance.startLoad();
+          return;
+        }
+
+        // Paso 3: recovery de media error
+        if (mediaErrCount < 3) {
+          mediaErrCount++;
+          hlsInstance.recoverMediaError();
+          return;
+        }
+
+        // Paso 4: reinicio completo como último recurso
+        mediaErrCount = 0;
+        const t = v.currentTime;
+        hlsInstance.destroy();
+        hlsInstance = new window.Hls({ autoStartLoad: true, startLevel: 0 });
+        hlsInstance.loadSource(url);
+        hlsInstance.attachMedia(v);
+        hlsInstance.once(window.Hls.Events.MANIFEST_PARSED, () => {
+          v.currentTime = t;
+          v.play().catch(() => {});
         });
-      }
+      }, 500);
+
+      // Limpiar watchdog cuando se destruya el player
+      v.addEventListener('emptied', () => clearInterval(watchdog), { once: true });
 
       // Recovery de errores fatales HLS
       hlsInstance.on(window.Hls.Events.ERROR, (_, data) => {
         if (!data.fatal) return;
         if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
-          hlsInstance.startLoad();
+          setTimeout(() => hlsInstance && hlsInstance.startLoad(), 1000);
         } else if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) {
           hlsInstance.recoverMediaError();
         } else {
-          // Error irrecuperable: reiniciar
+          clearInterval(watchdog);
           hlsInstance.destroy();
           hlsInstance = null;
           v.src = url;
