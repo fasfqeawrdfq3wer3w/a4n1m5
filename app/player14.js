@@ -251,111 +251,97 @@
 
   // ── Reproductor nativo ligero ─────────────────────────────
   function buildVideoPlayer(wrap, url, poster, videoType) {
-    // HLS ya fue destruido en renderPlayer; solo limpiar si hay contenido residual
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
-    // Limpiar solo nodos que no sean el loader (ya visible)
     Array.from(wrap.children).forEach(c => {
       if (!c.classList.contains('vp-loading')) c.remove();
     });
+
+    const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
     const container = document.createElement('div');
     container.className = 'vp-wrap';
     wrap.appendChild(container);
 
-    // Video
     const v = document.createElement('video');
     v.id = 'player-video';
     v.setAttribute('playsinline', '');
+    // En móvil preload=none ahorra RAM y CPU hasta que el usuario pulse play
+    v.preload = isMobile ? 'none' : 'auto';
     if (poster) v.poster = poster;
     container.appendChild(v);
 
-    // HLS o src directo
+    // ── HLS ──────────────────────────────────────────────────
     if ((videoType === 'hls' || isHLS(url)) && window.Hls && window.Hls.isSupported()) {
-      const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-      hlsInstance = new window.Hls({
-        maxBufferLength:            isMobile ? 6   : 30,
-        maxMaxBufferLength:         isMobile ? 12  : 60,
-        maxBufferSize:              isMobile ? 10 * 1000 * 1000 : 60 * 1000 * 1000,
+      hlsInstance = new window.Hls(isMobile ? {
+        // Móvil: mínimo buffer, calidad baja, ABR conservador
+        maxBufferLength:            8,
+        maxMaxBufferLength:         16,
+        maxBufferSize:              8 * 1000 * 1000,   // 8 MB
         maxBufferHole:              0.5,
-        highBufferWatchdogPeriod:   1,
+        highBufferWatchdogPeriod:   2,
         nudgeOffset:                0.3,
-        nudgeMaxRetry:              8,
-        startLevel:                 isMobile ? 0  : -1,
-        abrEwmaDefaultEstimate:     isMobile ? 200000 : 1500000,
-        abrBandWidthFactor:         isMobile ? 0.5 : 0.9,
-        abrBandWidthUpFactor:       isMobile ? 0.3 : 0.7,
+        nudgeMaxRetry:              5,
+        startLevel:                 0,                 // siempre calidad más baja al inicio
+        abrEwmaDefaultEstimate:     150000,            // asume 150kbps al inicio
+        abrBandWidthFactor:         0.5,
+        abrBandWidthUpFactor:       0.3,
+        abrEwmaFastLive:            2,
+        abrEwmaSlowLive:            5,
         capLevelToPlayerSize:       true,
-        fragLoadingMaxRetry:        8,
-        fragLoadingRetryDelay:      300,
-        fragLoadingMaxRetryTimeout: 3000,
-        manifestLoadingMaxRetry:    4,
-        levelLoadingMaxRetry:       4,
+        fragLoadingMaxRetry:        6,
+        fragLoadingRetryDelay:      1000,
+        fragLoadingMaxRetryTimeout: 5000,
+        manifestLoadingMaxRetry:    3,
+        levelLoadingMaxRetry:       3,
+        autoStartLoad:              false,             // esperar a que el usuario pulse play
+      } : {
+        // Desktop: configuración normal
+        maxBufferLength:            30,
+        maxMaxBufferLength:         60,
+        startLevel:                 -1,
+        capLevelToPlayerSize:       true,
         autoStartLoad:              true,
       });
+
       hlsInstance.loadSource(url);
       hlsInstance.attachMedia(v);
 
-      // ── Watchdog: solo actúa si el video lleva >5s congelado Y no hay buffering activo ──
-      let lastTime = -1, frozenSecs = 0, mediaErrCount = 0;
+      // En móvil arrancar carga solo cuando el usuario pulse play (ahorra CPU/RAM)
+      if (isMobile) {
+        v.addEventListener('play', () => {
+          if (hlsInstance) hlsInstance.startLoad();
+        }, { once: true });
+      }
+
+      // Watchdog minimalista: solo detecta freeze real (>8s sin avanzar)
+      let lastWatchTime = -1, frozenTicks = 0, errCount = 0;
       const watchdog = setInterval(() => {
-        if (v.paused || v.ended || !hlsInstance) { frozenSecs = 0; return; }
-
+        if (v.paused || v.ended || !hlsInstance) { frozenTicks = 0; return; }
         const ct = v.currentTime;
-        if (ct !== lastTime) {
-          lastTime = ct;
-          frozenSecs = 0;
-          return;
-        }
-        frozenSecs++;
-
-        // Esperar al menos 5s antes de intervenir — buffering normal puede durar eso
-        if (frozenSecs < 5) return;
-
-        // Si HLS está descargando activamente, no intervenir
-        if (hlsInstance.bandwidthEstimate > 0 && frozenSecs < 10) return;
-
-        frozenSecs = 0;
-
-        // Solo nudge si hay buffer real adelante (evita micro-saltos innecesarios)
-        if (v.buffered.length) {
-          const ahead = v.buffered.end(v.buffered.length - 1) - ct;
-          if (ahead > 1) {
-            v.currentTime = ct + 0.1;
-            return;
-          }
-        }
-
-        // Bajar calidad y recargar
+        if (ct !== lastWatchTime) { lastWatchTime = ct; frozenTicks = 0; return; }
+        if (++frozenTicks < 8) return; // 8 ticks × 1s = 8s congelado
+        frozenTicks = 0;
+        // Bajar calidad primero
         if (hlsInstance.currentLevel > 0) {
-          hlsInstance.currentLevel = hlsInstance.currentLevel - 1;
+          hlsInstance.currentLevel = 0; // ir directo a la más baja
           hlsInstance.startLoad();
           return;
         }
-
-        // Recovery de media error (máx 2 veces antes de reinicio)
-        if (mediaErrCount < 2) {
-          mediaErrCount++;
-          hlsInstance.recoverMediaError();
-          return;
-        }
-
-        // Reinicio completo solo como último recurso
-        mediaErrCount = 0;
+        // Luego recovery de media
+        if (errCount++ < 2) { hlsInstance.recoverMediaError(); return; }
+        // Último recurso: reinicio
+        errCount = 0;
         const t = ct;
         hlsInstance.destroy();
         hlsInstance = new window.Hls({ autoStartLoad: true, startLevel: 0, capLevelToPlayerSize: true });
         hlsInstance.loadSource(url);
         hlsInstance.attachMedia(v);
-        hlsInstance.once(window.Hls.Events.MANIFEST_PARSED, () => {
-          v.currentTime = t;
-          v.play().catch(() => {});
-        });
-      }, 1000); // tick cada 1s, no 500ms
+        hlsInstance.once(window.Hls.Events.MANIFEST_PARSED, () => { v.currentTime = t; v.play().catch(() => {}); });
+      }, 1000);
 
+      v.addEventListener('seeking', () => { frozenTicks = 0; });
       v.addEventListener('emptied', () => clearInterval(watchdog), { once: true });
-      v.addEventListener('seeking', () => { frozenSecs = 0; }); // reset al hacer seek manual
 
-      // Recovery de errores fatales HLS
       hlsInstance.on(window.Hls.Events.ERROR, (_, data) => {
         if (!data.fatal) return;
         if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
@@ -364,20 +350,18 @@
           hlsInstance.recoverMediaError();
         } else {
           clearInterval(watchdog);
-          hlsInstance.destroy();
-          hlsInstance = null;
+          hlsInstance.destroy(); hlsInstance = null;
           v.src = url;
         }
       });
 
     } else if ((videoType === 'hls' || isHLS(url)) && v.canPlayType('application/vnd.apple.mpegurl')) {
-      // Safari / iOS soporta HLS nativo
       v.src = url;
     } else {
       v.src = url;
     }
 
-    // Zonas de doble tap
+    // ── UI ───────────────────────────────────────────────────
     const tapL = document.createElement('div'); tapL.className = 'vp-tap-left';
     const tapR = document.createElement('div'); tapR.className = 'vp-tap-right';
     const ripL = document.createElement('div'); ripL.className = 'vp-seek-ripple';
@@ -387,7 +371,6 @@
     tapL.appendChild(ripL); tapR.appendChild(ripR);
     container.appendChild(tapL); container.appendChild(tapR);
 
-    // Controles overlay
     const ctrl = document.createElement('div');
     ctrl.className = 'vp-controls';
     ctrl.innerHTML = `
@@ -418,7 +401,6 @@
       </div>`;
     container.appendChild(ctrl);
 
-    // Loader inicial
     const vidLoader = createLoadingOverlay(container);
     let loaderHidden = false;
     function hideLoader() {
@@ -429,14 +411,12 @@
     v.addEventListener('canplay', hideLoader, { once: true });
     const loaderFallback = setTimeout(hideLoader, 10000);
 
-    // Spinner de buffering
     const spinner = document.createElement('div');
     spinner.className = 'vp-spinner';
     spinner.style.display = 'none';
     spinner.innerHTML = `<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="16"/></svg>`;
     container.appendChild(spinner);
 
-    // Badge de modo ajuste
     const fitBadge = document.createElement('div');
     fitBadge.className = 'vp-fit-badge';
     container.appendChild(fitBadge);
@@ -458,7 +438,6 @@
     const FIT_COVER_SVG   = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="5" width="22" height="14" rx="1"/><line x1="1" y1="12" x2="23" y2="12" stroke-dasharray="2 2"/></svg>`;
     const FIT_CONTAIN_SVG = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="1"/><line x1="3" y1="12" x2="21" y2="12" stroke-dasharray="2 2"/></svg>`;
 
-    // ── Modo ajuste: contain (normal) ↔ cover (ancho completo) ──
     let fitMode = 'contain';
     function applyFit(mode, showBadge) {
       fitMode = mode;
@@ -472,25 +451,18 @@
       }
     }
     applyFit('contain', false);
-
-    fitBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      applyFit(fitMode === 'contain' ? 'cover' : 'contain', true);
-      showControls();
-    });
+    fitBtn.addEventListener('click', e => { e.stopPropagation(); applyFit(fitMode === 'contain' ? 'cover' : 'contain', true); showControls(); });
 
     function updatePlayIcon() {
       const svg = v.paused ? PLAY_SVG : PAUSE_SVG;
       playBtn.innerHTML = svg;
       playCenter.innerHTML = svg;
     }
-
     function showControls() {
       ctrl.classList.remove('hidden');
       clearTimeout(hideTimer);
       if (!v.paused) hideTimer = setTimeout(() => ctrl.classList.add('hidden'), 3000);
     }
-
     function togglePlay() { v.paused ? v.play() : v.pause(); showControls(); }
 
     playCenter.addEventListener('click', togglePlay);
@@ -498,34 +470,24 @@
 
     v.addEventListener('play',    () => { updatePlayIcon(); spinner.style.display = 'none'; showControls(); });
     v.addEventListener('pause',   () => { updatePlayIcon(); showControls(); });
+    v.addEventListener('playing', () => { spinner.style.display = 'none'; });
     v.addEventListener('waiting', () => { spinner.style.display = ''; });
     v.addEventListener('stalled', () => { spinner.style.display = ''; });
     v.addEventListener('canplay', () => { clearTimeout(loaderFallback); spinner.style.display = 'none'; });
-    v.addEventListener('playing', () => { spinner.style.display = 'none'; });
 
-    // ── Continuar viendo ──
+    // ── Continuar viendo ──────────────────────────────────────
     let saveInterval = null;
-    let pendingResume = 0; // tiempo a restaurar cuando el video esté listo
+    let pendingResume = 0;
 
     function applyResume(t) {
-      // readyState >= 1 (HAVE_METADATA) y duration conocida → puede hacer seek
-      if (v.duration > 0 && isFinite(v.duration)) {
-        v.currentTime = t;
-        pendingResume = 0;
-      } else {
-        // Reintentar cuando haya metadata
-        pendingResume = t;
-      }
+      if (v.duration > 0 && isFinite(v.duration)) { v.currentTime = t; pendingResume = 0; }
+      else pendingResume = t;
     }
 
     v.addEventListener('loadedmetadata', () => {
       const saved = getSavedTime(url);
       if (saved > 0 && v.duration > 0 && saved < v.duration * 0.95) {
-        showResumeToast(
-          saved,
-          () => applyResume(saved),
-          () => {}
-        );
+        showResumeToast(saved, () => applyResume(saved), () => {});
       } else if (pendingResume > 0) {
         applyResume(pendingResume);
       }
@@ -533,41 +495,38 @@
         if (!v.paused && !v.ended) saveProgress(url, v.currentTime, v.duration);
       }, 5000);
     });
-
-    // Para HLS: duration puede llegar tarde, reintentar el seek pendiente
     v.addEventListener('durationchange', () => {
       if (pendingResume > 0 && v.duration > 0 && isFinite(v.duration)) {
-        if (pendingResume < v.duration * 0.95) {
-          v.currentTime = pendingResume;
-        }
+        if (pendingResume < v.duration * 0.95) v.currentTime = pendingResume;
         pendingResume = 0;
       }
     });
-
-    // Fallback: si al primer canplay aún hay seek pendiente, aplicarlo
     v.addEventListener('canplay', () => {
       if (pendingResume > 0 && v.duration > 0) {
         if (pendingResume < v.duration * 0.95) v.currentTime = pendingResume;
         pendingResume = 0;
       }
     }, { once: true });
-    v.addEventListener('ended', () => {
-      clearInterval(saveInterval);
-      localStorage.removeItem(resumeKey(url));
-    });
+    v.addEventListener('ended', () => { clearInterval(saveInterval); localStorage.removeItem(resumeKey(url)); });
 
+    // ── Barra de progreso — throttled con rAF ─────────────────
+    let rafPending = false;
     v.addEventListener('timeupdate', () => {
-      if (!v.duration) return;
-      fill.style.width = (v.currentTime / v.duration * 100) + '%';
-      timeEl.textContent = fmtTime(v.currentTime) + ' / ' + fmtTime(v.duration);
+      if (rafPending) return;
+      rafPending = true;
+      requestAnimationFrame(() => {
+        rafPending = false;
+        if (!v.duration) return;
+        fill.style.width = (v.currentTime / v.duration * 100) + '%';
+        timeEl.textContent = fmtTime(v.currentTime) + ' / ' + fmtTime(v.duration);
+      });
     });
-
     v.addEventListener('progress', () => {
       if (!v.duration || !v.buffered.length) return;
       buffer.style.width = (v.buffered.end(v.buffered.length - 1) / v.duration * 100) + '%';
     });
 
-    // Progreso — drag
+    // ── Seek drag ─────────────────────────────────────────────
     let dragging = false;
     function seekTo(e) {
       const rect = progress.getBoundingClientRect();
@@ -583,7 +542,7 @@
     document.addEventListener('mouseup',    () => { dragging = false; progress.classList.remove('dragging'); });
     document.addEventListener('touchend',   () => { dragging = false; progress.classList.remove('dragging'); });
 
-    // Mute
+    // ── Mute ──────────────────────────────────────────────────
     muteBtn.addEventListener('click', e => { e.stopPropagation(); v.muted = !v.muted; updateMuteIcon(); });
     function updateMuteIcon() {
       muteBtn.innerHTML = v.muted
@@ -591,31 +550,23 @@
         : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`;
     }
 
-    // Fullscreen
+    // ── Fullscreen ────────────────────────────────────────────
     fsBtn.addEventListener('click', e => {
       e.stopPropagation();
-      if (!document.fullscreenElement) {
-        (container.requestFullscreen || container.webkitRequestFullscreen).call(container);
-      } else {
-        (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-      }
+      if (!document.fullscreenElement) (container.requestFullscreen || container.webkitRequestFullscreen).call(container);
+      else (document.exitFullscreen || document.webkitExitFullscreen).call(document);
     });
-    document.addEventListener('fullscreenchange', () => {
-      fsBtn.innerHTML = document.fullscreenElement ? EXIT_FS : FS_SVG;
-    });
+    document.addEventListener('fullscreenchange', () => { fsBtn.innerHTML = document.fullscreenElement ? EXIT_FS : FS_SVG; });
 
-    // Tap central: toggle controles
+    // ── Tap / doble tap ───────────────────────────────────────
     container.addEventListener('click', e => {
       if (e.target.closest('.vp-btn, .vp-progress, .vp-tap-left, .vp-tap-right, .vp-play-center')) return;
       ctrl.classList.contains('hidden') ? showControls() : ctrl.classList.add('hidden');
     });
-
-    // Doble tap: -10s izquierda, +10s derecha
     function doubleTapSeek(zone, seconds, ripple) {
       let taps = 0, tapTimer;
       zone.addEventListener('click', e => {
-        e.stopPropagation();
-        taps++;
+        e.stopPropagation(); taps++;
         clearTimeout(tapTimer);
         tapTimer = setTimeout(() => {
           if (taps >= 2) {
@@ -632,35 +583,25 @@
     doubleTapSeek(tapL, -10, ripL);
     doubleTapSeek(tapR, +10, ripR);
 
-    // ── Pinch: alterna contain ↔ cover ──
+    // ── Pinch zoom ────────────────────────────────────────────
     let pinchStartDist = 0, pinchTriggered = false;
     container.addEventListener('touchstart', e => {
-      if (e.touches.length === 2) {
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        pinchStartDist = Math.sqrt(dx * dx + dy * dy);
-        pinchTriggered = false;
-        e.preventDefault();
-      }
-    }, { passive: false });
-
-    container.addEventListener('touchmove', e => {
-      if (e.touches.length === 2 && !pinchTriggered) {
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        const newDist = Math.sqrt(dx * dx + dy * dy);
-        const delta = newDist - pinchStartDist;
-        if (Math.abs(delta) > 30) {
-          pinchTriggered = true;
-          applyFit(delta > 0 ? 'cover' : 'contain', true);
-        }
-        e.preventDefault();
-      }
-    }, { passive: false });
-
-    container.addEventListener('touchend', () => {
+      if (e.touches.length !== 2) return;
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchStartDist = Math.sqrt(dx * dx + dy * dy);
       pinchTriggered = false;
-    });
+      e.preventDefault();
+    }, { passive: false });
+    container.addEventListener('touchmove', e => {
+      if (e.touches.length !== 2 || pinchTriggered) return;
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const delta = Math.sqrt(dx * dx + dy * dy) - pinchStartDist;
+      if (Math.abs(delta) > 30) { pinchTriggered = true; applyFit(delta > 0 ? 'cover' : 'contain', true); }
+      e.preventDefault();
+    }, { passive: false });
+    container.addEventListener('touchend', () => { pinchTriggered = false; });
 
     showControls();
   }
