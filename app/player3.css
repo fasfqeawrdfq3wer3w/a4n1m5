@@ -354,3 +354,38 @@ html,body{
   transform-origin:center;animation:vp-spin 0.8s linear infinite
 }
 @keyframes vp-spin{to{transform:rotate(360deg)}}
+
+/* ── Modal continuar viendo ── */
+#vp-resume-overlay{
+  position:absolute;inset:0;z-index:20;
+  background:rgba(0,0,0,0.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;transition:opacity 0.25s;pointer-events:none
+}
+#vp-resume-overlay.show{opacity:1;pointer-events:auto}
+#vp-resume-modal{
+  background:#141414;border:1px solid rgba(255,255,255,0.08);
+  border-radius:18px;padding:24px 20px 20px;
+  width:calc(100% - 48px);max-width:300px;
+  text-align:center;
+  transform:scale(0.88);transition:transform 0.28s cubic-bezier(0.34,1.2,0.64,1)
+}
+#vp-resume-overlay.show #vp-resume-modal{transform:scale(1)}
+.vp-resume-icon{
+  width:44px;height:44px;border-radius:50%;
+  background:rgba(0,230,118,0.12);border:1.5px solid rgba(0,230,118,0.3);
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 12px;color:var(--accent)
+}
+.vp-resume-title{font-size:15px;font-weight:800;color:#f0f0f0;margin-bottom:4px}
+.vp-resume-sub{font-size:12px;color:#888899;margin-bottom:18px}
+.vp-resume-sub strong{color:#f0f0f0;font-weight:700}
+.vp-resume-btns{display:flex;flex-direction:column;gap:8px}
+.vp-resume-btn{
+  width:100%;padding:11px;border-radius:12px;
+  font-size:13px;font-weight:700;cursor:pointer;border:none;
+  transition:opacity 0.15s
+}
+.vp-resume-btn:active{opacity:0.75}
+.vp-resume-yes{background:var(--accent);color:#000}
+.vp-resume-no{background:rgba(255,255,255,0.08);color:#aaa}
