@@ -295,67 +295,71 @@
       hlsInstance.loadSource(url);
       hlsInstance.attachMedia(v);
 
-      // ── Watchdog: detecta video congelado y fuerza recovery ──
-      let lastTime = 0, frozenMs = 0, mediaErrCount = 0;
-      let stallLevel = -1; // nivel al que se bajó por stall
-      const FROZEN_THRESHOLD = 1500; // ms sin avanzar antes de actuar
+      // ── Watchdog: solo actúa si el video lleva >5s congelado Y no hay buffering activo ──
+      let lastTime = -1, frozenSecs = 0, mediaErrCount = 0;
       const watchdog = setInterval(() => {
-        if (v.paused || v.ended || !hlsInstance) return;
-        if (v.currentTime !== lastTime) {
-          lastTime = v.currentTime;
-          frozenMs = 0;
+        if (v.paused || v.ended || !hlsInstance) { frozenSecs = 0; return; }
+
+        const ct = v.currentTime;
+        if (ct !== lastTime) {
+          lastTime = ct;
+          frozenSecs = 0;
           return;
         }
-        frozenMs += 500;
-        if (frozenMs < FROZEN_THRESHOLD) return;
-        frozenMs = 0;
+        frozenSecs++;
 
-        // Paso 1: hay buffer adelante → micro-salto para desatascar el decoder
+        // Esperar al menos 5s antes de intervenir — buffering normal puede durar eso
+        if (frozenSecs < 5) return;
+
+        // Si HLS está descargando activamente, no intervenir
+        if (hlsInstance.bandwidthEstimate > 0 && frozenSecs < 10) return;
+
+        frozenSecs = 0;
+
+        // Solo nudge si hay buffer real adelante (evita micro-saltos innecesarios)
         if (v.buffered.length) {
-          const ahead = v.buffered.end(v.buffered.length - 1) - v.currentTime;
-          if (ahead > 0.3) {
-            v.currentTime += 0.2;
+          const ahead = v.buffered.end(v.buffered.length - 1) - ct;
+          if (ahead > 1) {
+            v.currentTime = ct + 0.1;
             return;
           }
         }
 
-        // Paso 2: bajar calidad si no estamos ya en la más baja
-        const cur = hlsInstance.currentLevel;
-        if (cur > 0) {
-          stallLevel = cur - 1;
-          hlsInstance.currentLevel = stallLevel;
+        // Bajar calidad y recargar
+        if (hlsInstance.currentLevel > 0) {
+          hlsInstance.currentLevel = hlsInstance.currentLevel - 1;
           hlsInstance.startLoad();
           return;
         }
 
-        // Paso 3: recovery de media error
-        if (mediaErrCount < 3) {
+        // Recovery de media error (máx 2 veces antes de reinicio)
+        if (mediaErrCount < 2) {
           mediaErrCount++;
           hlsInstance.recoverMediaError();
           return;
         }
 
-        // Paso 4: reinicio completo como último recurso
+        // Reinicio completo solo como último recurso
         mediaErrCount = 0;
-        const t = v.currentTime;
+        const t = ct;
         hlsInstance.destroy();
-        hlsInstance = new window.Hls({ autoStartLoad: true, startLevel: 0 });
+        hlsInstance = new window.Hls({ autoStartLoad: true, startLevel: 0, capLevelToPlayerSize: true });
         hlsInstance.loadSource(url);
         hlsInstance.attachMedia(v);
         hlsInstance.once(window.Hls.Events.MANIFEST_PARSED, () => {
           v.currentTime = t;
           v.play().catch(() => {});
         });
-      }, 500);
+      }, 1000); // tick cada 1s, no 500ms
 
-      // Limpiar watchdog cuando se destruya el player
       v.addEventListener('emptied', () => clearInterval(watchdog), { once: true });
+      v.addEventListener('seeking', () => { frozenSecs = 0; }); // reset al hacer seek manual
 
       // Recovery de errores fatales HLS
       hlsInstance.on(window.Hls.Events.ERROR, (_, data) => {
         if (!data.fatal) return;
         if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
-          setTimeout(() => hlsInstance && hlsInstance.startLoad(), 1000);
+          setTimeout(() => hlsInstance && hlsInstance.startLoad(), 2000);
         } else if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) {
           hlsInstance.recoverMediaError();
         } else {
