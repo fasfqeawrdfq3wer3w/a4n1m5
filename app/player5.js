@@ -10,6 +10,28 @@
     return /\.m3u8(\?.*)?$/i.test(url);
   }
 
+  // Detecta el tipo real de una URL haciendo HEAD request cuando
+  // la extensión no es suficiente para determinarlo
+  function detectVideoType(url) {
+    // Si la URL ya tiene extensión reconocible, no hace falta fetch
+    if (/\.(mp4|webm|ogg)(\?.*)?$/i.test(url)) return Promise.resolve('mp4');
+    if (/\.m3u8(\?.*)?$/i.test(url)) return Promise.resolve('hls');
+
+    const proxyHead = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
+    return fetch(proxyHead, { method: 'GET' })
+      .then(r => r.json())
+      .then(data => {
+        const ct = (data.content_type || '').toLowerCase();
+        if (ct.includes('mpegurl') || ct.includes('x-mpegurl') || ct.includes('m3u8')) return 'hls';
+        if (ct.includes('mp4') || ct.includes('video/') || ct.includes('octet-stream')) return 'mp4';
+        // Inspeccionar los primeros bytes del contenido para detectar m3u8
+        const body = (data.contents || '').trimStart();
+        if (body.startsWith('#EXTM3U')) return 'hls';
+        return 'mp4'; // fallback: intentar como mp4 directo
+      })
+      .catch(() => 'mp4');
+  }
+
   // ── Desofuscador / extractor de URL real ──────────────────
   function resolveUrl(server) {
     const url = server.url;
@@ -211,7 +233,7 @@
   }
 
   // ── Reproductor nativo ligero ─────────────────────────────
-  function buildVideoPlayer(wrap, url, poster) {
+  function buildVideoPlayer(wrap, url, poster, videoType) {
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
     wrap.innerHTML = '';
 
@@ -227,10 +249,13 @@
     container.appendChild(v);
 
     // HLS o src directo
-    if (isHLS(url) && window.Hls && window.Hls.isSupported()) {
+    if ((videoType === 'hls' || isHLS(url)) && window.Hls && window.Hls.isSupported()) {
       hlsInstance = new window.Hls({ maxBufferLength: 30 });
       hlsInstance.loadSource(url);
       hlsInstance.attachMedia(v);
+    } else if ((videoType === 'hls' || isHLS(url)) && v.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari / iOS soporta HLS nativo
+      v.src = url;
     } else {
       v.src = url;
     }
@@ -533,6 +558,30 @@
     castBtn.onclick = () => { window.location.href = castBtn._castUrl; };
   }
 
+  function loadIframe(wrap, url, server, loader) {
+    const f = document.createElement('iframe');
+    f.id = 'player-frame';
+    f.src = url;
+    f.allowFullscreen = true;
+    f.style.cssText = 'width:100%;height:100%;border:none;display:block;background:#000';
+    f.setAttribute('allow', 'autoplay; fullscreen; picture-in-picture');
+    f.setAttribute('scrolling', 'no');
+    if (server && server.sandbox) {
+      f.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen');
+    }
+    const iframeWrap = document.createElement('div');
+    iframeWrap.style.cssText = 'position:relative;width:100%;height:100%';
+    const adBlocker = document.createElement('div');
+    adBlocker.style.cssText = 'position:absolute;inset:0;z-index:2;pointer-events:none';
+    const origOpen = window.open;
+    window.open = () => null;
+    iframeWrap.appendChild(f);
+    iframeWrap.appendChild(adBlocker);
+    wrap.appendChild(iframeWrap);
+    f.addEventListener('load', () => { loader.hide(); window.open = origOpen; }, { once: true });
+    setTimeout(() => { loader.hide(); window.open = origOpen; }, 15000);
+  }
+
   function renderPlayer(animate) {
     const ep   = window.EPISODE;
     const wrap = $('player-wrap');
@@ -562,37 +611,22 @@
         }
 
         if (isDirectVideo(url)) {
+          // Extensión reconocible: usar reproductor nativo directamente
           loader.hide();
-          buildVideoPlayer(wrap, url, poster);
-        } else {
-          const f = document.createElement('iframe');
-          f.id = 'player-frame';
-          f.src = url;
-          f.allowFullscreen = true;
-          f.style.cssText = 'width:100%;height:100%;border:none;display:block;background:#000';
-          f.setAttribute('allow', 'autoplay; fullscreen; picture-in-picture');
-          f.setAttribute('scrolling', 'no');
-          if (server.sandbox) {
-            f.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-presentation allow-fullscreen');
-          }
-
-          const iframeWrap = document.createElement('div');
-          iframeWrap.style.cssText = 'position:relative;width:100%;height:100%';
-
-          const adBlocker = document.createElement('div');
-          adBlocker.style.cssText = 'position:absolute;inset:0;z-index:2;pointer-events:none';
-          const origOpen = window.open;
-          window.open = () => null;
-
-          iframeWrap.appendChild(f);
-          iframeWrap.appendChild(adBlocker);
-          wrap.appendChild(iframeWrap);
-
-          f.addEventListener('load', () => {
+          buildVideoPlayer(wrap, url, poster, isHLS(url) ? 'hls' : 'mp4');
+        } else if (/^https?:\/\//i.test(url)) {
+          // URL sin extensión reconocible: detectar tipo por Content-Type / contenido
+          detectVideoType(url).then(videoType => {
             loader.hide();
-            window.open = origOpen;
-          }, { once: true });
-          setTimeout(() => { loader.hide(); window.open = origOpen; }, 15000);
+            if (videoType === 'hls' || videoType === 'mp4') {
+              buildVideoPlayer(wrap, url, poster, videoType);
+            } else {
+              // Fallback: iframe
+              loadIframe(wrap, url, server, loader);
+            }
+          });
+        } else {
+          loadIframe(wrap, url, server, loader);
         }
 
         requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('loaded')));
