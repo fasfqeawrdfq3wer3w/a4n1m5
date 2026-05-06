@@ -14,11 +14,8 @@
   function resolveUrl(server) {
     const url = server.url;
     if (!url) return Promise.resolve('');
-
-    // Sin desofuscación — usar URL directamente
     if (!server.deobfuscate) return Promise.resolve(url);
 
-    // Con deobfuscate:true — fetchear via proxy y desofuscar
     const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
     return fetch(proxyUrl)
       .then(r => r.json())
@@ -36,7 +33,6 @@
   }
 
   function extractVideoUrl(code) {
-    // Patrones comunes: file, src, url, source, hls, mp4, stream
     const patterns = [
       /["']?(?:file|src|url|source|hls|mp4|stream|video)["']?\s*:\s*["'`](https?:\/\/[^"'`\s,}]+)/i,
       /(?:file|src|url|source)\s*=\s*["'`](https?:\/\/[^"'`\s]+)/i,
@@ -80,6 +76,7 @@
       return result;
     } catch { return null; }
   }
+
   function fmtTime(s) {
     s = Math.floor(s || 0);
     const m = Math.floor(s / 60);
@@ -92,11 +89,8 @@
   let hlsInstance  = null;
   let hideTimer    = null;
 
-  // ── Selects nativos ───────────────────────────────────────
-  let selLang, selSrv;
-
   function buildSelects() {
-    // selects eliminados — se usa prompt nativo
+    // se usa picker nativo
   }
 
   function openPicker(type) {
@@ -107,7 +101,6 @@
       : ep.langs[activeLang].servers.map((s, i) => ({ label: s.name, idx: i }));
     const current = isLang ? activeLang : activeServer;
 
-    // Crear select oculto, poblarlo y abrir picker nativo
     const sel = document.createElement('select');
     sel.style.cssText = 'position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;top:0;left:0';
     items.forEach(it => {
@@ -127,7 +120,6 @@
       sel.remove();
     });
     sel.addEventListener('blur', () => setTimeout(() => sel.remove(), 300));
-
     try { sel.showPicker(); } catch { sel.focus(); sel.click(); }
   }
 
@@ -149,10 +141,9 @@
     };
   }
 
-  // ── Reproductor custom ────────────────────────────────────
+  // ── Reproductor nativo ligero ─────────────────────────────
   function buildVideoPlayer(wrap, url, poster) {
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
-
     wrap.innerHTML = '';
 
     const container = document.createElement('div');
@@ -168,20 +159,20 @@
 
     // HLS o src directo
     if (isHLS(url) && window.Hls && window.Hls.isSupported()) {
-      hlsInstance = new window.Hls();
+      hlsInstance = new window.Hls({ maxBufferLength: 30 });
       hlsInstance.loadSource(url);
       hlsInstance.attachMedia(v);
     } else {
       v.src = url;
     }
 
-    // Zonas doble tap
+    // Zonas de doble tap
     const tapL = document.createElement('div'); tapL.className = 'vp-tap-left';
     const tapR = document.createElement('div'); tapR.className = 'vp-tap-right';
     const ripL = document.createElement('div'); ripL.className = 'vp-seek-ripple';
-    ripL.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/><polyline points="9 18 3 12 9 6"/></svg><span>-10s</span>`;
+    ripL.innerHTML = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/><polyline points="9 18 3 12 9 6"/></svg><span>-10s</span>`;
     const ripR = document.createElement('div'); ripR.className = 'vp-seek-ripple';
-    ripR.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/><polyline points="15 18 21 12 15 6"/></svg><span>+10s</span>`;
+    ripR.innerHTML = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/><polyline points="15 18 21 12 15 6"/></svg><span>+10s</span>`;
     tapL.appendChild(ripL); tapR.appendChild(ripR);
     container.appendChild(tapL); container.appendChild(tapR);
 
@@ -190,7 +181,7 @@
     ctrl.className = 'vp-controls';
     ctrl.innerHTML = `
       <div class="vp-play-center" id="vp-play-center">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
       </div>
       <div class="vp-bottom">
         <div class="vp-progress" id="vp-progress">
@@ -203,12 +194,12 @@
           </button>
           <span class="vp-time" id="vp-time">0:00 / 0:00</span>
           <div class="vp-spacer"></div>
-          <div class="vp-vol-wrap">
-            <button class="vp-btn" id="vp-mute-btn" aria-label="Mute">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-            </button>
-            <input class="vp-vol-slider" id="vp-vol" type="range" min="0" max="1" step="0.05" value="1">
-          </div>
+          <button class="vp-btn" id="vp-fit-btn" aria-label="Ajuste de imagen">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="1"/><line x1="3" y1="12" x2="21" y2="12" stroke-dasharray="2 2"/></svg>
+          </button>
+          <button class="vp-btn" id="vp-mute-btn" aria-label="Silenciar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+          </button>
           <button class="vp-btn" id="vp-fs-btn" aria-label="Pantalla completa">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
           </button>
@@ -216,7 +207,7 @@
       </div>`;
     container.appendChild(ctrl);
 
-    // Loader encima de todo — se oculta cuando hay duración disponible
+    // Loader inicial
     const vidLoader = createLoadingOverlay(container);
     let loaderHidden = false;
     function hideLoader() {
@@ -224,32 +215,58 @@
       loaderHidden = true;
       vidLoader.hide();
     }
-    // En móvil loadedmetadata puede no tener duración aún, usamos canplay como señal segura
     v.addEventListener('canplay', hideLoader, { once: true });
-    // Fallback por si canplay nunca llega (error de red, formato no soportado)
     const loaderFallback = setTimeout(hideLoader, 10000);
 
-    // Spinner (buffering mid-play)
+    // Spinner de buffering
     const spinner = document.createElement('div');
     spinner.className = 'vp-spinner';
     spinner.style.display = 'none';
     spinner.innerHTML = `<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="16"/></svg>`;
     container.appendChild(spinner);
 
+    // Badge de modo ajuste
+    const fitBadge = document.createElement('div');
+    fitBadge.className = 'vp-fit-badge';
+    container.appendChild(fitBadge);
+
     const playCenter = ctrl.querySelector('#vp-play-center');
     const playBtn    = ctrl.querySelector('#vp-play-btn');
     const muteBtn    = ctrl.querySelector('#vp-mute-btn');
     const fsBtn      = ctrl.querySelector('#vp-fs-btn');
+    const fitBtn     = ctrl.querySelector('#vp-fit-btn');
     const progress   = ctrl.querySelector('#vp-progress');
     const fill       = ctrl.querySelector('#vp-fill');
     const buffer     = ctrl.querySelector('#vp-buffer');
     const timeEl     = ctrl.querySelector('#vp-time');
-    const volSlider  = ctrl.querySelector('#vp-vol');
 
     const PLAY_SVG  = `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
     const PAUSE_SVG = `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
     const FS_SVG    = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
     const EXIT_FS   = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="10" y1="14" x2="3" y2="21"/><line x1="21" y1="3" x2="14" y2="10"/></svg>`;
+    const FIT_COVER_SVG   = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="5" width="22" height="14" rx="1"/><line x1="1" y1="12" x2="23" y2="12" stroke-dasharray="2 2"/></svg>`;
+    const FIT_CONTAIN_SVG = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="1"/><line x1="3" y1="12" x2="21" y2="12" stroke-dasharray="2 2"/></svg>`;
+
+    // ── Modo ajuste: contain (normal) ↔ cover (ancho completo) ──
+    let fitMode = 'contain';
+    function applyFit(mode, showBadge) {
+      fitMode = mode;
+      v.style.objectFit = mode;
+      fitBtn.innerHTML = mode === 'cover' ? FIT_COVER_SVG : FIT_CONTAIN_SVG;
+      if (showBadge) {
+        fitBadge.textContent = mode === 'cover' ? 'Ancho completo' : 'Normal';
+        fitBadge.classList.add('show');
+        clearTimeout(fitBadge._t);
+        fitBadge._t = setTimeout(() => fitBadge.classList.remove('show'), 1400);
+      }
+    }
+    applyFit('contain', false);
+
+    fitBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      applyFit(fitMode === 'contain' ? 'cover' : 'contain', true);
+      showControls();
+    });
 
     function updatePlayIcon() {
       const svg = v.paused ? PLAY_SVG : PAUSE_SVG;
@@ -266,23 +283,22 @@
     function togglePlay() { v.paused ? v.play() : v.pause(); showControls(); }
 
     playCenter.addEventListener('click', togglePlay);
-    playBtn.addEventListener('click', togglePlay);
+    playBtn.addEventListener('click', e => { e.stopPropagation(); togglePlay(); });
 
-    v.addEventListener('play',  () => { updatePlayIcon(); spinner.style.display = 'none'; showControls(); });
-    v.addEventListener('pause', () => { updatePlayIcon(); showControls(); });
+    v.addEventListener('play',    () => { updatePlayIcon(); spinner.style.display = 'none'; showControls(); });
+    v.addEventListener('pause',   () => { updatePlayIcon(); showControls(); });
     v.addEventListener('waiting', () => { spinner.style.display = ''; });
     v.addEventListener('canplay', () => { clearTimeout(loaderFallback); spinner.style.display = 'none'; });
 
     v.addEventListener('timeupdate', () => {
       if (!v.duration) return;
-      const pct = (v.currentTime / v.duration) * 100;
-      fill.style.width = pct + '%';
+      fill.style.width = (v.currentTime / v.duration * 100) + '%';
       timeEl.textContent = fmtTime(v.currentTime) + ' / ' + fmtTime(v.duration);
     });
 
     v.addEventListener('progress', () => {
       if (!v.duration || !v.buffered.length) return;
-      buffer.style.width = ((v.buffered.end(v.buffered.length - 1) / v.duration) * 100) + '%';
+      buffer.style.width = (v.buffered.end(v.buffered.length - 1) / v.duration * 100) + '%';
     });
 
     // Progreso — drag
@@ -301,17 +317,17 @@
     document.addEventListener('mouseup',    () => { dragging = false; progress.classList.remove('dragging'); });
     document.addEventListener('touchend',   () => { dragging = false; progress.classList.remove('dragging'); });
 
-    // Volumen
-    volSlider.addEventListener('input', () => { v.volume = +volSlider.value; v.muted = v.volume === 0; updateMuteIcon(); });
-    muteBtn.addEventListener('click', () => { v.muted = !v.muted; updateMuteIcon(); });
+    // Mute
+    muteBtn.addEventListener('click', e => { e.stopPropagation(); v.muted = !v.muted; updateMuteIcon(); });
     function updateMuteIcon() {
-      muteBtn.innerHTML = v.muted || v.volume === 0
+      muteBtn.innerHTML = v.muted
         ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>`
         : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`;
     }
 
     // Fullscreen
-    fsBtn.addEventListener('click', () => {
+    fsBtn.addEventListener('click', e => {
+      e.stopPropagation();
       if (!document.fullscreenElement) {
         (container.requestFullscreen || container.webkitRequestFullscreen).call(container);
       } else {
@@ -322,17 +338,13 @@
       fsBtn.innerHTML = document.fullscreenElement ? EXIT_FS : FS_SVG;
     });
 
-    // Tap para mostrar/ocultar controles
-    let lastTap = 0;
+    // Tap central: toggle controles
     container.addEventListener('click', e => {
-      if (e.target.closest('.vp-btn, .vp-progress, .vp-vol-slider, .vp-play-center')) return;
-      const now = Date.now();
-      if (now - lastTap < 300) return; // ignorar doble tap aquí
-      lastTap = now;
+      if (e.target.closest('.vp-btn, .vp-progress, .vp-tap-left, .vp-tap-right, .vp-play-center')) return;
       ctrl.classList.contains('hidden') ? showControls() : ctrl.classList.add('hidden');
     });
 
-    // Doble tap seek
+    // Doble tap: -10s izquierda, +10s derecha
     function doubleTapSeek(zone, seconds, ripple) {
       let taps = 0, tapTimer;
       zone.addEventListener('click', e => {
@@ -345,114 +357,43 @@
             ripple.classList.add('show');
             setTimeout(() => ripple.classList.remove('show'), 700);
           } else {
-            // tap simple: toggle controles
             ctrl.classList.contains('hidden') ? showControls() : ctrl.classList.add('hidden');
           }
           taps = 0;
-        }, 250);
+        }, 260);
       });
     }
     doubleTapSeek(tapL, -10, ripL);
     doubleTapSeek(tapR, +10, ripR);
 
-    // ── Pinch to zoom + pan ──
-    let scale = 1, panX = 0, panY = 0;
-    let initDist = 0, initScale = 1;
-    let initPanX = 0, initPanY = 0;
-    let midX = 0, midY = 0;
-    let isPinching = false;
-
-    // Indicador de zoom
-    const zoomBadge = document.createElement('div');
-    zoomBadge.style.cssText = 'position:absolute;top:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.6);color:#00E676;font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;pointer-events:none;opacity:0;transition:opacity 0.3s;z-index:6;backdrop-filter:blur(4px)';
-    container.appendChild(zoomBadge);
-    let zoomBadgeTimer;
-    function showZoomBadge() {
-      zoomBadge.textContent = Math.round(scale * 10) / 10 + 'x';
-      zoomBadge.style.opacity = '1';
-      clearTimeout(zoomBadgeTimer);
-      zoomBadgeTimer = setTimeout(() => { zoomBadge.style.opacity = '0'; }, 1200);
-    }
-
-    function applyTransform() {
-      // Limitar pan según el zoom actual
-      const maxX = (scale - 1) * container.clientWidth  / 2;
-      const maxY = (scale - 1) * container.clientHeight / 2;
-      panX = Math.max(-maxX, Math.min(maxX, panX));
-      panY = Math.max(-maxY, Math.min(maxY, panY));
-      v.style.transform = `scale(${scale}) translate(${panX / scale}px, ${panY / scale}px)`;
-      v.style.transformOrigin = 'center center';
-    }
-
-    function dist(t) {
-      const dx = t[0].clientX - t[1].clientX;
-      const dy = t[0].clientY - t[1].clientY;
-      return Math.sqrt(dx * dx + dy * dy);
-    }
-
+    // ── Pinch: alterna contain ↔ cover ──
+    let pinchStartDist = 0, pinchTriggered = false;
     container.addEventListener('touchstart', e => {
       if (e.touches.length === 2) {
-        isPinching = true;
-        initDist  = dist(e.touches);
-        initScale = scale;
-        initPanX  = panX;
-        initPanY  = panY;
-        midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-        midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        pinchStartDist = Math.sqrt(dx * dx + dy * dy);
+        pinchTriggered = false;
         e.preventDefault();
       }
     }, { passive: false });
 
     container.addEventListener('touchmove', e => {
-      if (e.touches.length === 2 && isPinching) {
-        const newDist = dist(e.touches);
-        scale = Math.max(1, Math.min(4, initScale * (newDist / initDist)));
-        // Pan proporcional al movimiento del centro
-        const newMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-        const newMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-        panX = initPanX + (newMidX - midX);
-        panY = initPanY + (newMidY - midY);
-        applyTransform();
-        showZoomBadge();
-        e.preventDefault();
-      } else if (e.touches.length === 1 && scale > 1 && !dragging) {
-        // Pan con un dedo cuando está zoomeado
+      if (e.touches.length === 2 && !pinchTriggered) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const newDist = Math.sqrt(dx * dx + dy * dy);
+        const delta = newDist - pinchStartDist;
+        if (Math.abs(delta) > 30) {
+          pinchTriggered = true;
+          applyFit(delta > 0 ? 'cover' : 'contain', true);
+        }
         e.preventDefault();
       }
     }, { passive: false });
 
-    container.addEventListener('touchend', e => {
-      if (e.touches.length < 2) {
-        isPinching = false;
-        // Snap a 1x si está muy cerca
-        if (scale < 1.1) { scale = 1; panX = 0; panY = 0; applyTransform(); showZoomBadge(); }
-      }
-    });
-
-    // Pan con un dedo cuando está zoomeado
-    let panStartX = 0, panStartY = 0, panStartPanX = 0, panStartPanY = 0, isPanning = false;
-    container.addEventListener('touchstart', e => {
-      if (e.touches.length === 1 && scale > 1) {
-        isPanning = true;
-        panStartX = e.touches[0].clientX;
-        panStartY = e.touches[0].clientY;
-        panStartPanX = panX;
-        panStartPanY = panY;
-      }
-    }, { passive: true });
-    container.addEventListener('touchmove', e => {
-      if (isPanning && e.touches.length === 1 && scale > 1 && !dragging) {
-        panX = panStartPanX + (e.touches[0].clientX - panStartX);
-        panY = panStartPanY + (e.touches[0].clientY - panStartY);
-        applyTransform();
-      }
-    }, { passive: true });
-    container.addEventListener('touchend', () => { isPanning = false; });
-
-    // Doble tap para reset zoom
-    container.addEventListener('dblclick', e => {
-      if (e.target.closest('.vp-btn, .vp-progress, .vp-vol-slider')) return;
-      if (scale > 1) { scale = 1; panX = 0; panY = 0; applyTransform(); showZoomBadge(); }
+    container.addEventListener('touchend', () => {
+      pinchTriggered = false;
     });
 
     showControls();
@@ -495,14 +436,12 @@
     $('btn-srv-label').textContent  = lang.servers[activeServer].name;
   }
 
-  function updateCast(url, isDirect) {
+  function updateCast(url) {
     const castBtn = $('btn-cast');
     if (!url) { castBtn.classList.add('hidden'); return; }
     castBtn.classList.remove('hidden');
     castBtn._castUrl = `intent://${url.replace(/^https?:\/\//, '')}#Intent;scheme=${url.startsWith('https') ? 'https' : 'http'};package=com.instantbits.cast.webvideo;end`;
-    castBtn.onclick = () => {
-      window.location.href = castBtn._castUrl;
-    };
+    castBtn.onclick = () => { window.location.href = castBtn._castUrl; };
   }
 
   function renderPlayer(animate) {
@@ -516,15 +455,13 @@
       wrap.classList.remove('switching');
 
       const server = ep.langs[activeLang].servers[activeServer];
-
-      // Mostrar loading mientras resuelve
       const loader = createLoadingOverlay(wrap);
 
       resolveUrl(server).then(resolved => {
         const url    = typeof resolved === 'object' ? resolved.url    : resolved;
         const poster = typeof resolved === 'object' ? resolved.poster : (ep.poster || '');
 
-        updateCast(url, isDirectVideo(url));
+        updateCast(url);
 
         if (!url) {
           loader.hide();
@@ -536,7 +473,6 @@
         }
 
         if (isDirectVideo(url)) {
-          // buildVideoPlayer limpia wrap y crea su propio loader interno
           loader.hide();
           buildVideoPlayer(wrap, url, poster);
         } else {
@@ -545,7 +481,6 @@
           f.src = url;
           f.allowFullscreen = true;
           f.style.cssText = 'width:100%;height:100%;border:none;display:block;background:#000';
-          // allow autoplay y fullscreen; sin downloads ni popups
           f.setAttribute('allow', 'autoplay; fullscreen; picture-in-picture');
           f.setAttribute('scrolling', 'no');
           if (server.sandbox) {
@@ -555,10 +490,8 @@
           const iframeWrap = document.createElement('div');
           iframeWrap.style.cssText = 'position:relative;width:100%;height:100%';
 
-          // Capa bloqueadora de clics en zonas de anuncios (bordes del iframe)
           const adBlocker = document.createElement('div');
           adBlocker.style.cssText = 'position:absolute;inset:0;z-index:2;pointer-events:none';
-          // Interceptar intentos de abrir ventanas desde el iframe
           const origOpen = window.open;
           window.open = () => null;
 
