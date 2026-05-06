@@ -264,20 +264,80 @@
     if ((videoType === 'hls' || isHLS(url)) && window.Hls && window.Hls.isSupported()) {
       const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
       hlsInstance = new window.Hls({
-        maxBufferLength:       isMobile ? 10  : 30,
-        maxMaxBufferLength:    isMobile ? 20  : 60,
-        maxBufferSize:         isMobile ? 20 * 1000 * 1000 : 60 * 1000 * 1000, // 20MB / 60MB
-        maxBufferHole:         0.5,
-        // En móvil arrancar en la calidad más baja y subir despacio
-        startLevel:            isMobile ? 0   : -1,  // -1 = auto
-        abrEwmaDefaultEstimate: isMobile ? 500000 : 1500000, // estimación inicial de ancho de banda
-        abrBandWidthFactor:    isMobile ? 0.7 : 0.9,
-        abrBandWidthUpFactor:  isMobile ? 0.5 : 0.7,
-        capLevelToPlayerSize:  true,  // no cargar calidad mayor al tamaño del player
-        autoStartLoad:         true,
+        maxBufferLength:          isMobile ? 8   : 30,
+        maxMaxBufferLength:       isMobile ? 16  : 60,
+        maxBufferSize:            isMobile ? 15 * 1000 * 1000 : 60 * 1000 * 1000,
+        maxBufferHole:            0.3,
+        highBufferWatchdogPeriod: 1,
+        nudgeOffset:              0.2,
+        nudgeMaxRetry:            5,
+        // Arrancar en calidad baja en móvil y subir despacio
+        startLevel:               isMobile ? 0  : -1,
+        abrEwmaDefaultEstimate:   isMobile ? 300000 : 1500000,
+        abrBandWidthFactor:       isMobile ? 0.6 : 0.9,
+        abrBandWidthUpFactor:     isMobile ? 0.4 : 0.7,
+        abrEwmaFastLive:          isMobile ? 2   : 3,
+        abrEwmaSlowLive:          isMobile ? 4   : 9,
+        capLevelToPlayerSize:     true,
+        // Reintentos agresivos en errores de fragmento
+        fragLoadingMaxRetry:      6,
+        fragLoadingRetryDelay:    500,
+        fragLoadingMaxRetryTimeout: 4000,
+        manifestLoadingMaxRetry:  3,
+        levelLoadingMaxRetry:     4,
+        autoStartLoad:            true,
       });
       hlsInstance.loadSource(url);
       hlsInstance.attachMedia(v);
+
+      if (isMobile) {
+        // Bajar calidad automáticamente si hay rebuffering frecuente
+        let stallCount = 0, lastStallTime = 0;
+        const onStall = () => {
+          const now = Date.now();
+          if (now - lastStallTime < 8000) stallCount++;
+          else stallCount = 1;
+          lastStallTime = now;
+          // 2 trabadas en menos de 8s → bajar un nivel de calidad
+          if (stallCount >= 2 && hlsInstance) {
+            const cur = hlsInstance.currentLevel;
+            if (cur > 0) {
+              hlsInstance.currentLevel = cur - 1;
+              stallCount = 0;
+            }
+          }
+        };
+        v.addEventListener('waiting', onStall);
+        v.addEventListener('stalled', onStall);
+
+        // Recovery: si lleva >2s trabado y hay buffer disponible, nudge
+        v.addEventListener('waiting', () => {
+          setTimeout(() => {
+            if (!v.paused && v.readyState < 3 && v.buffered.length) {
+              const ahead = v.buffered.end(v.buffered.length - 1) - v.currentTime;
+              if (ahead > 0.5) {
+                v.currentTime += 0.1; // micro-salto para desatascar
+              }
+            }
+          }, 2000);
+        });
+      }
+
+      // Recovery de errores fatales HLS
+      hlsInstance.on(window.Hls.Events.ERROR, (_, data) => {
+        if (!data.fatal) return;
+        if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) {
+          hlsInstance.startLoad();
+        } else if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) {
+          hlsInstance.recoverMediaError();
+        } else {
+          // Error irrecuperable: reiniciar
+          hlsInstance.destroy();
+          hlsInstance = null;
+          v.src = url;
+        }
+      });
+
     } else if ((videoType === 'hls' || isHLS(url)) && v.canPlayType('application/vnd.apple.mpegurl')) {
       // Safari / iOS soporta HLS nativo
       v.src = url;
@@ -407,7 +467,9 @@
     v.addEventListener('play',    () => { updatePlayIcon(); spinner.style.display = 'none'; showControls(); });
     v.addEventListener('pause',   () => { updatePlayIcon(); showControls(); });
     v.addEventListener('waiting', () => { spinner.style.display = ''; });
+    v.addEventListener('stalled', () => { spinner.style.display = ''; });
     v.addEventListener('canplay', () => { clearTimeout(loaderFallback); spinner.style.display = 'none'; });
+    v.addEventListener('playing', () => { spinner.style.display = 'none'; });
 
     // ── Continuar viendo ──
     let saveInterval = null;
