@@ -366,11 +366,9 @@
       if (saved > 0 && v.duration > 0 && saved < v.duration * 0.95) {
         showResumeToast(
           saved,
-          () => { v.currentTime = saved; v.play(); },
-          () => { v.play(); }
+          () => { v.currentTime = saved; },
+          () => {}
         );
-      } else {
-        v.play();
       }
       saveInterval = setInterval(() => {
         if (!v.paused && !v.ended) saveProgress(url, v.currentTime, v.duration);
