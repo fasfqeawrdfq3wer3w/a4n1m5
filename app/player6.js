@@ -17,19 +17,28 @@
     if (/\.(mp4|webm|ogg)(\?.*)?$/i.test(url)) return Promise.resolve('mp4');
     if (/\.m3u8(\?.*)?$/i.test(url)) return Promise.resolve('hls');
 
-    const proxyHead = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
-    return fetch(proxyHead, { method: 'GET' })
-      .then(r => r.json())
-      .then(data => {
-        const ct = (data.content_type || '').toLowerCase();
-        if (ct.includes('mpegurl') || ct.includes('x-mpegurl') || ct.includes('m3u8')) return 'hls';
-        if (ct.includes('mp4') || ct.includes('video/') || ct.includes('octet-stream')) return 'mp4';
-        // Inspeccionar los primeros bytes del contenido para detectar m3u8
-        const body = (data.contents || '').trimStart();
-        if (body.startsWith('#EXTM3U')) return 'hls';
-        return 'mp4'; // fallback: intentar como mp4 directo
+    // Si parece un player embed (dominio con /play/, /embed/, /player/, etc.)
+    // no intentar fetch — es una página web, no un archivo de video
+    if (/\/(play|embed|player|watch|stream|video)\//i.test(url)) return Promise.resolve('iframe');
+    if (/\/(play|embed|player|watch)\b/i.test(url)) return Promise.resolve('iframe');
+
+    // Intentar HEAD request directo (sin proxy) para ver Content-Type
+    return fetch(url, { method: 'HEAD', mode: 'no-cors' })
+      .then(() => {
+        // no-cors no expone headers, así que intentamos GET con el proxy
+        const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
+        return fetch(proxyUrl, { signal: AbortSignal.timeout(5000) })
+          .then(r => r.json())
+          .then(data => {
+            const ct = (data.content_type || '').toLowerCase();
+            if (ct.includes('mpegurl') || ct.includes('x-mpegurl') || ct.includes('m3u8')) return 'hls';
+            if (ct.includes('mp4') || ct.includes('video/') || ct.includes('octet-stream')) return 'mp4';
+            const body = (data.contents || '').trimStart();
+            if (body.startsWith('#EXTM3U')) return 'hls';
+            return 'iframe';
+          });
       })
-      .catch(() => 'mp4');
+      .catch(() => 'iframe'); // Si falla cualquier fetch → tratar como iframe
   }
 
   // ── Desofuscador / extractor de URL real ──────────────────
@@ -621,7 +630,7 @@
             if (videoType === 'hls' || videoType === 'mp4') {
               buildVideoPlayer(wrap, url, poster, videoType);
             } else {
-              // Fallback: iframe
+              // Es un player embed o no se pudo detectar → iframe
               loadIframe(wrap, url, server, loader);
             }
           });
