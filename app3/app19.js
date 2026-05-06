@@ -121,7 +121,10 @@ const CAT_ICONS_MAP = Object.fromEntries(CATS_CFG.map(c => [c.name, c.icon]));
 let hCatEnabled = localStorage.getItem('h_enabled') === '1';
 let autoWatched = localStorage.getItem('auto_watched') === '1';
 
-const visibleDATA = () => hCatEnabled ? DATA : DATA.filter(d => d.category !== 'H');
+const visibleDATA = () => hCatEnabled ? DATA : DATA.filter(d => {
+  const cats = d.category ? d.category.split(/,\s*/).map(c => c.trim()) : [];
+  return !cats.includes('H');
+});
 const saveHEnabled = () => localStorage.setItem('h_enabled', hCatEnabled ? '1' : '0');
 
 function formatAdded(d) {
@@ -333,7 +336,7 @@ function renderCategories() {
   const catGrid = $('cat-grid');
   const visibleCats = hCatEnabled ? [...CATEGORIES, 'H'] : CATEGORIES;
   catGrid.innerHTML = visibleCats.map(cat => {
-    const count = visibleDATA().filter(d => d.category === cat).length;
+    const count = visibleDATA().filter(d => d.category === cat || (d.category && d.category.split(/,\s*/).map(c=>c.trim()).includes(cat))).length;
     const bg     = CAT_COLORS[cat]     || 'linear-gradient(135deg,#2d3436,#636e72)';
     const accent = CAT_ACCENT[cat]     || '#fff';
     const icon   = CAT_ICONS_MAP[cat]  || '';
@@ -350,7 +353,7 @@ function renderCategories() {
 
 function renderCatLibrary(cat) {
   $('cat-library-title').textContent = cat === 'H' ? 'Contenido H' : cat;
-  const cards = DATA.filter(d => d.category === cat).map(d => searchCardHTML(d, cat === 'H')).join('');
+  const cards = DATA.filter(d => d.category === cat || (d.category && d.category.split(/,\s*/).map(c=>c.trim()).includes(cat))).map(d => searchCardHTML(d, cat === 'H')).join('');
   $('cat-library-grid').innerHTML = cards;
 }
 
