@@ -4,10 +4,13 @@
   const $ = id => document.getElementById(id);
 
   function isDirectVideo(url) {
-    return /\.(mp4|webm|ogg|m3u8)(\?.*)?$/i.test(url);
+    // Extensión al final o tipo en el path (ej: /m3u8/hash, /mp4/hash)
+    return /\.(mp4|webm|ogg|m3u8)(\?.*)?$/i.test(url) ||
+           /[\/=](mp4|webm|ogg|m3u8)[\/\?&]?/i.test(url);
   }
   function isHLS(url) {
-    return /\.m3u8(\?.*)?$/i.test(url);
+    return /\.m3u8(\?.*)?$/i.test(url) ||
+           /[\/=]m3u8[\/\?&]?/i.test(url);
   }
 
   // Detecta el tipo real de una URL haciendo HEAD request cuando
