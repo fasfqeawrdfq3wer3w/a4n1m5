@@ -89,6 +89,75 @@
   let hlsInstance  = null;
   let hideTimer    = null;
 
+  // ── Progreso / continuar viendo ───────────────────────────
+  // La clave incluye un hash de la URL para que el progreso sea
+  // exclusivo del video exacto (servidor + idioma). Si cambia la URL
+  // no aparece el toast de continuar viendo.
+  function urlHash(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+      h = Math.imul(31, h) + str.charCodeAt(i) | 0;
+    }
+    return (h >>> 0).toString(36);
+  }
+
+  function resumeKey(url) {
+    const ep = window.EPISODE;
+    const base = 'resume_' + ep.serieId + '_s' + (ep.seasonIdx ?? 0) + '_e' + ep.num;
+    return url ? base + '_' + urlHash(url) : base;
+  }
+
+  function saveProgress(url, currentTime, duration) {
+    if (!url || !duration || currentTime < 5) return;
+    if (currentTime / duration > 0.95) {
+      localStorage.removeItem(resumeKey(url));
+      return;
+    }
+    localStorage.setItem(resumeKey(url), String(Math.floor(currentTime)));
+  }
+
+  function getSavedTime(url) {
+    if (!url) return 0;
+    const t = parseInt(localStorage.getItem(resumeKey(url)) || '0', 10);
+    return t > 5 ? t : 0;
+  }
+
+  function showResumeToast(savedTime, onResume, onDismiss) {
+    const existing = document.getElementById('vp-resume-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'vp-resume-overlay';
+    overlay.innerHTML = `
+      <div id="vp-resume-modal">
+        <div class="vp-resume-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div class="vp-resume-title">Continuar viendo</div>
+        <div class="vp-resume-sub">Quedaste en <strong>${fmtTime(savedTime)}</strong></div>
+        <div class="vp-resume-btns">
+          <button class="vp-resume-btn vp-resume-yes">Continuar</button>
+          <button class="vp-resume-btn vp-resume-no">Desde el inicio</button>
+        </div>
+      </div>`;
+    document.getElementById('player-wrap').appendChild(overlay);
+
+    requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('show')));
+
+    const dismissTimer = setTimeout(() => dismiss(true), 10000);
+
+    function dismiss(doResume) {
+      clearTimeout(dismissTimer);
+      overlay.classList.remove('show');
+      setTimeout(() => overlay.remove(), 280);
+      if (doResume) onResume();
+      else onDismiss();
+    }
+
+    overlay.querySelector('.vp-resume-yes').addEventListener('click', () => dismiss(true));
+    overlay.querySelector('.vp-resume-no').addEventListener('click',  () => dismiss(false));
+  }
+
   function buildSelects() {
     // se usa picker nativo
   }
@@ -289,6 +358,28 @@
     v.addEventListener('pause',   () => { updatePlayIcon(); showControls(); });
     v.addEventListener('waiting', () => { spinner.style.display = ''; });
     v.addEventListener('canplay', () => { clearTimeout(loaderFallback); spinner.style.display = 'none'; });
+
+    // ── Continuar viendo ──
+    let saveInterval = null;
+    v.addEventListener('loadedmetadata', () => {
+      const saved = getSavedTime(url);
+      if (saved > 0 && v.duration > 0 && saved < v.duration * 0.95) {
+        showResumeToast(
+          saved,
+          () => { v.currentTime = saved; v.play(); },
+          () => { v.play(); }
+        );
+      } else {
+        v.play();
+      }
+      saveInterval = setInterval(() => {
+        if (!v.paused && !v.ended) saveProgress(url, v.currentTime, v.duration);
+      }, 5000);
+    });
+    v.addEventListener('ended', () => {
+      clearInterval(saveInterval);
+      localStorage.removeItem(resumeKey(url));
+    });
 
     v.addEventListener('timeupdate', () => {
       if (!v.duration) return;
