@@ -272,7 +272,6 @@
         poster: poster || '',
         autoplay: false,
         color: '#00E676',
-        title: '',
         volume: 0.8
       });
 
