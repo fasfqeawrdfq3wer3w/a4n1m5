@@ -44,12 +44,14 @@
   }
 
   function isDirectVideo(url) {
+    if (url.includes('pixeldrain.com')) return false;
     // Restaurar flexibilidad para capturar m3u8/mp4 en cualquier parte del path
     // El fallback automático en buildVideoPlayer se encargará si falla
     return /\.(mp4|webm|ogg|m3u8)(\?.*)?$/i.test(url) ||
            /[\/=](mp4|webm|ogg|m3u8)[\/\?&]?/i.test(url);
   }
   function isHLS(url) {
+    if (url.includes('pixeldrain.com')) return false;
     return /\.m3u8(\?.*)?$/i.test(url) ||
            /[\/=]m3u8[\/\?&]?/i.test(url);
   }
@@ -57,6 +59,8 @@
   // Detecta el tipo real de una URL haciendo HEAD request cuando
   // la extensión no es suficiente para determinarlo
   function detectVideoType(url) {
+    if (url.includes('pixeldrain.com')) return Promise.resolve('iframe');
+
     // Si la URL ya tiene extensión reconocible, no hace falta fetch
     if (/\.(mp4|webm|ogg)(?:[\/\?&]|$)/i.test(url)) return Promise.resolve('mp4');
     if (/\.m3u8(?:[\/\?&]|$)/i.test(url)) return Promise.resolve('hls');
@@ -218,6 +222,7 @@
   let activeServer = 0;
   let hlsInstance  = null;
   let hideTimer    = null;
+  let renderCount    = 0;
 
   // ── Progreso / continuar viendo ───────────────────────────
   // La clave ahora solo incluye serie, temporada, episodio y idioma
@@ -346,15 +351,17 @@
   // ── Reproductor con Wolf Player ──────────────────────────────
   let wolfInstance = null;
 
-  function buildVideoPlayer(wrap, url, poster, videoType, mainLoader, server) {
+  function buildVideoPlayer(wrap, url, poster, videoType, mainLoader, server, requestId) {
+    if (requestId && requestId !== renderCount) return;
+
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
     if (wolfInstance) {
       if (typeof wolfInstance.destroy === 'function') wolfInstance.destroy();
       wolfInstance = null;
     }
-    Array.from(wrap.children).forEach(c => {
-      if (!c.classList.contains('vp-loading')) c.remove();
-    });
+    
+    // Limpiar TODO el wrap para evitar acumulaciones
+    wrap.innerHTML = '';
 
     // Detener cualquier video que esté reproduciéndose antes de cargar el nuevo
     const prevVideo = document.querySelector('#wolf-player-container video');
@@ -702,7 +709,12 @@
     castBtn.onclick = () => { window.location.href = castBtn._castUrl; };
   }
 
-  function loadIframe(wrap, url, server, loader) {
+  function loadIframe(wrap, url, server, loader, requestId) {
+    if (requestId && requestId !== renderCount) return;
+
+    window.EPISODE.isEmbed = true;
+    wrap.innerHTML = '';
+
     const f = document.createElement('iframe');
     f.id = 'player-frame';
     f.src = url;
@@ -758,6 +770,7 @@
   function renderPlayer(animate) {
     const ep   = window.EPISODE;
     const wrap = $('player-wrap');
+    const myCount = ++renderCount;
 
     // Resetear la bandera del toast al renderizar un nuevo player
     resumeToastShown = false;
@@ -778,23 +791,10 @@
       const server = ep.langs[activeLang].servers[activeServer];
 
       resolveUrl(server).then(resolved => {
+        if (myCount !== renderCount) return;
+
         let url    = typeof resolved === 'object' ? resolved.url    : resolved;
         const poster = typeof resolved === 'object' ? resolved.poster : (ep.poster || '');
-
-        // Transformation: pixeldrain.com/u/ID -> pixeldrain.com/api/file/ID + Proxy to bypass hotlink
-        if (url && url.includes('pixeldrain.com/u/')) {
-            url = url.replace('pixeldrain.com/u/', 'pixeldrain.com/api/file/');
-        }
-        if (url && url.includes('pixeldrain.com/api/file/')) {
-            // Usar proxy personalizado si existe, si no corsproxy.io
-            const customProxy = window.EPISODE && window.EPISODE.proxyUrl;
-            if (customProxy) {
-                url = customProxy.replace(/\/?$/, '/') + '?url=' + encodeURIComponent(url);
-            } else {
-                url = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-            }
-            console.log('🛡️ PixelDrain (Proxy):', url);
-        }
 
         updateCast(url);
 
@@ -808,17 +808,18 @@
         }
 
         if (isDirectVideo(url)) {
-          buildVideoPlayer(wrap, url, poster, isHLS(url) ? 'hls' : 'mp4', loader, server);
+          buildVideoPlayer(wrap, url, poster, isHLS(url) ? 'hls' : 'mp4', loader, server, myCount);
         } else if (/^https?:\/\//i.test(url)) {
           detectVideoType(url).then(videoType => {
+            if (myCount !== renderCount) return;
             if (videoType === 'hls' || videoType === 'mp4') {
-              buildVideoPlayer(wrap, url, poster, videoType, loader, server);
+              buildVideoPlayer(wrap, url, poster, videoType, loader, server, myCount);
             } else {
-              loadIframe(wrap, server.url, server, loader);
+              loadIframe(wrap, server.url, server, loader, myCount);
             }
           });
         } else {
-          loadIframe(wrap, server.url, server, loader);
+          loadIframe(wrap, server.url, server, loader, myCount);
         }
 
         requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('loaded')));
