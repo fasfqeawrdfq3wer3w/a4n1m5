@@ -57,48 +57,63 @@
     if (!url) return Promise.resolve('');
     if (!server.deobfuscate) return Promise.resolve(url);
 
+    console.group('🔍 resolveUrl:', url);
+    console.log('⏳ Fetching via proxy...');
+
     return proxyFetch(url)
       .then(data => {
         let code = data.contents || '';
-        if (!code) return url;
+        console.log('📄 HTML recibido:', code.length, 'chars');
+        console.log('📄 Primeros 500 chars:', code.slice(0, 500));
+        if (!code) { console.warn('⚠️ HTML vacío'); console.groupEnd(); return url; }
 
         // Capa 1: extraer directo del HTML crudo
         let found = extractVideoUrl(code);
-        if (found) { console.log('✅ URL extraída directo:', found); return found; }
+        if (found) { console.log('✅ Capa 1 (HTML crudo):', found); console.groupEnd(); return found; }
+        console.log('❌ Capa 1: no encontrado');
 
         // Capa 2: buscar bloques <script> y extraer de cada uno
         const scripts = [...code.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
-        for (const s of scripts) {
-          found = extractVideoUrl(s[1]);
-          if (found) { console.log('✅ URL extraída de script:', found); return found; }
+        console.log('📜 Scripts encontrados:', scripts.length);
+        for (let si = 0; si < scripts.length; si++) {
+          const scriptContent = scripts[si][1];
+          console.log(`  Script #${si+1} (${scriptContent.length} chars):`, scriptContent.slice(0, 200));
+          found = extractVideoUrl(scriptContent);
+          if (found) { console.log(`✅ Capa 2 (script #${si+1}):`, found); console.groupEnd(); return found; }
         }
+        console.log('❌ Capa 2: no encontrado');
 
-        // Capa 3: desofuscar iterativamente y buscar en cada capa
+        // Capa 3: desofuscar iterativamente
         let current = code;
         for (let i = 0; i < 15; i++) {
           const decoded = tryUnpack(current);
-          if (!decoded || decoded === current) break;
+          if (!decoded || decoded === current) { console.log(`  Desofuscación global: paró en capa ${i}`); break; }
           current = decoded;
+          console.log(`  Capa 3.${i+1} desofuscado (${current.length} chars):`, current.slice(0, 200));
           found = extractVideoUrl(current);
-          if (found) { console.log('✅ URL extraída tras desofuscar capa', i+1, ':', found); return found; }
+          if (found) { console.log(`✅ Capa 3 (desofuscado ${i+1}):`, found); console.groupEnd(); return found; }
         }
+        console.log('❌ Capa 3: no encontrado');
 
-        // Capa 4: buscar en scripts desofuscados
-        for (const s of scripts) {
-          let scriptCode = s[1];
+        // Capa 4: scripts desofuscados individualmente
+        for (let si = 0; si < scripts.length; si++) {
+          let scriptCode = scripts[si][1];
           for (let i = 0; i < 10; i++) {
             const decoded = tryUnpack(scriptCode);
             if (!decoded || decoded === scriptCode) break;
             scriptCode = decoded;
+            console.log(`  Script #${si+1} capa ${i+1}:`, scriptCode.slice(0, 200));
             found = extractVideoUrl(scriptCode);
-            if (found) { console.log('✅ URL extraída de script desofuscado:', found); return found; }
+            if (found) { console.log(`✅ Capa 4 (script #${si+1} desofuscado ${i+1}):`, found); console.groupEnd(); return found; }
           }
         }
+        console.log('❌ Capa 4: no encontrado');
 
-        console.warn('⚠️ No se encontró URL de video en:', url);
+        console.warn('⚠️ No se encontró URL de video. Retornando URL original.');
+        console.groupEnd();
         return url;
       })
-      .catch(e => { console.error('❌ Error al resolver URL:', e); return url; });
+      .catch(e => { console.error('❌ Error fetch:', e); console.groupEnd(); return url; });
   }
 
   function extractVideoUrl(code) {
