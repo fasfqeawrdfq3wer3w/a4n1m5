@@ -326,7 +326,18 @@
             if (resumeChecked) return;
             resumeChecked = true;
             const saved = getSavedTime();
-            if (saved > 0 && v.duration > 0 && saved < v.duration * 0.95) {
+            const currentTime = v.currentTime || 0;
+            
+            // Solo mostrar si:
+            // 1. Hay tiempo guardado significativo (más de 2 minutos o 5% del video)
+            // 2. El usuario está al inicio (menos de 30 segundos)
+            // 3. El tiempo guardado no está cerca del final (menos del 95%)
+            const minProgress = Math.max(120, v.duration * 0.05); // 2 minutos o 5%
+            const isAtStart = currentTime < 30;
+            const hasSignificantProgress = saved > minProgress;
+            const notNearEnd = saved < v.duration * 0.95;
+            
+            if (saved > 0 && v.duration > 0 && isAtStart && hasSignificantProgress && notNearEnd) {
               showResumeToast(saved, () => { v.currentTime = saved; }, () => {});
             }
           };
