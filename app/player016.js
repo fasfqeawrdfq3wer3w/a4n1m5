@@ -340,7 +340,7 @@
   // ── Reproductor con Wolf Player ──────────────────────────────
   let wolfInstance = null;
 
-  function buildVideoPlayer(wrap, url, poster, videoType) {
+  function buildVideoPlayer(wrap, url, poster, videoType, mainLoader) {
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
     if (wolfInstance) {
       if (typeof wolfInstance.destroy === 'function') wolfInstance.destroy();
@@ -366,7 +366,12 @@
     // Ocultar loader cuando el video esté listo
     const vidLoader = createLoadingOverlay(container);
     let loaderHidden = false;
-    function hideLoader() { if (loaderHidden) return; loaderHidden = true; vidLoader.hide(); }
+    function hideLoader() { 
+      if (loaderHidden) return; 
+      loaderHidden = true; 
+      vidLoader.hide(); 
+      if (mainLoader) mainLoader.hide();
+    }
     setTimeout(hideLoader, 10000);
 
     // Verificar si Wolf Player está disponible
@@ -765,13 +770,11 @@
         }
 
         if (isDirectVideo(url)) {
-          loader.hide();
-          buildVideoPlayer(wrap, url, poster, isHLS(url) ? 'hls' : 'mp4');
+          buildVideoPlayer(wrap, url, poster, isHLS(url) ? 'hls' : 'mp4', loader);
         } else if (/^https?:\/\//i.test(url)) {
           detectVideoType(url).then(videoType => {
-            loader.hide();
             if (videoType === 'hls' || videoType === 'mp4') {
-              buildVideoPlayer(wrap, url, poster, videoType);
+              buildVideoPlayer(wrap, url, poster, videoType, loader);
             } else {
               loadIframe(wrap, url, server, loader);
             }
