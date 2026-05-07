@@ -342,7 +342,10 @@
 
   function buildVideoPlayer(wrap, url, poster, videoType) {
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
-    if (wolfInstance) { wolfInstance = null; }
+    if (wolfInstance) {
+      if (typeof wolfInstance.destroy === 'function') wolfInstance.destroy();
+      wolfInstance = null;
+    }
     Array.from(wrap.children).forEach(c => {
       if (!c.classList.contains('vp-loading')) c.remove();
     });
@@ -733,6 +736,10 @@
 
     // Destruir HLS anterior inmediatamente para liberar recursos
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+    if (wolfInstance) {
+      if (typeof wolfInstance.destroy === 'function') wolfInstance.destroy();
+      wolfInstance = null;
+    }
 
     // Mostrar loader ANTES de limpiar el contenido, así nunca hay pantalla negra
     wrap.innerHTML = '';
