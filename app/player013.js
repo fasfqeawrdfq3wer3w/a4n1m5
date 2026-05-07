@@ -668,22 +668,31 @@
     const iframeWrap = document.createElement('div');
     iframeWrap.style.cssText = 'position:relative;width:100%;height:100%';
 
-    // Botón pantalla completa solo para jkanime cargado como iframe
-    const isJkanime = /jkanime\.net/i.test(url);
-    if (isJkanime) {
+    // Botón pantalla completa solo para iframes de jkanime
+    if (/jkanime\.net/i.test(url)) {
+      const iconExpand   = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
+      const iconCollapse = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="10" y1="14" x2="3" y2="21"/><line x1="21" y1="3" x2="14" y2="10"/></svg>`;
       const fsBtn = document.createElement('button');
-      fsBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
-      fsBtn.title = 'Pantalla completa';
-      fsBtn.style.cssText = 'position:absolute;top:10px;right:10px;z-index:10;background:rgba(0,0,0,0.6);border:none;color:#fff;border-radius:8px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(4px);transition:background 0.2s';
-      fsBtn.addEventListener('mouseenter', () => fsBtn.style.background = 'rgba(0,230,118,0.8)');
-      fsBtn.addEventListener('mouseleave', () => fsBtn.style.background = 'rgba(0,0,0,0.6)');
+      fsBtn.style.cssText = 'position:absolute;top:10px;right:10px;z-index:10;background:rgba(0,0,0,0.7);border:none;color:#fff;border-radius:8px;height:36px;padding:0 12px;display:flex;align-items:center;gap:6px;cursor:pointer;backdrop-filter:blur(4px);transition:background 0.2s;font-size:12px;font-weight:700;font-family:inherit;white-space:nowrap';
+      const updateBtn = () => {
+        const isFs = !!document.fullscreenElement;
+        fsBtn.innerHTML = (isFs ? iconCollapse : iconExpand) + `<span>${isFs ? 'Salir' : 'Pantalla completa'}</span>`;
+      };
+      updateBtn();
+      fsBtn.addEventListener('mouseenter', () => fsBtn.style.background = 'rgba(0,230,118,0.85)');
+      fsBtn.addEventListener('mouseleave', () => fsBtn.style.background = 'rgba(0,0,0,0.7)');
       fsBtn.addEventListener('click', () => {
-        const el = iframeWrap;
-        if (el.requestFullscreen) el.requestFullscreen();
-        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-        else if (f.requestFullscreen) f.requestFullscreen();
-        else if (f.webkitRequestFullscreen) f.webkitRequestFullscreen();
+        if (!document.fullscreenElement) {
+          const el = iframeWrap;
+          if (el.requestFullscreen) el.requestFullscreen();
+          else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+        } else {
+          if (document.exitFullscreen) document.exitFullscreen();
+          else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        }
       });
+      document.addEventListener('fullscreenchange', updateBtn);
+      document.addEventListener('webkitfullscreenchange', updateBtn);
       iframeWrap.appendChild(fsBtn);
     }
 
