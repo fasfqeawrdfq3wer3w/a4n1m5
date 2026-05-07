@@ -6,11 +6,32 @@
   // UA de escritorio para que los servidores sirvan contenido de mayor calidad
   const DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
+  // Lista de proxies CORS en orden de prioridad
+  const CORS_PROXIES = [
+    url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&user_agent=${encodeURIComponent(DESKTOP_UA)}`,
+    url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+  ];
+
   function proxyFetch(url, timeoutMs) {
-    const proxy = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url)
-                + '&user_agent=' + encodeURIComponent(DESKTOP_UA);
     const opts = timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {};
-    return fetch(proxy, opts).then(r => r.json());
+
+    // Intentar proxies en orden
+    const tryProxy = (idx) => {
+      if (idx >= CORS_PROXIES.length) return Promise.reject(new Error('Todos los proxies fallaron'));
+      const proxyUrl = CORS_PROXIES[idx](url);
+      return fetch(proxyUrl, opts)
+        .then(r => {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json().catch(() => r.text().then(t => ({ contents: t })));
+        })
+        .catch(e => {
+          console.warn(`⚠️ Proxy ${idx+1} falló:`, e.message, '→ intentando siguiente...');
+          return tryProxy(idx + 1);
+        });
+    };
+
+    return tryProxy(0);
   }
 
   function isDirectVideo(url) {
@@ -646,6 +667,26 @@
     }
     const iframeWrap = document.createElement('div');
     iframeWrap.style.cssText = 'position:relative;width:100%;height:100%';
+
+    // Botón pantalla completa solo para jkanime cargado como iframe
+    const isJkanime = /jkanime\.net/i.test(url);
+    if (isJkanime) {
+      const fsBtn = document.createElement('button');
+      fsBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
+      fsBtn.title = 'Pantalla completa';
+      fsBtn.style.cssText = 'position:absolute;top:10px;right:10px;z-index:10;background:rgba(0,0,0,0.6);border:none;color:#fff;border-radius:8px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(4px);transition:background 0.2s';
+      fsBtn.addEventListener('mouseenter', () => fsBtn.style.background = 'rgba(0,230,118,0.8)');
+      fsBtn.addEventListener('mouseleave', () => fsBtn.style.background = 'rgba(0,0,0,0.6)');
+      fsBtn.addEventListener('click', () => {
+        const el = iframeWrap;
+        if (el.requestFullscreen) el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+        else if (f.requestFullscreen) f.requestFullscreen();
+        else if (f.webkitRequestFullscreen) f.webkitRequestFullscreen();
+      });
+      iframeWrap.appendChild(fsBtn);
+    }
+
     const adBlocker = document.createElement('div');
     adBlocker.style.cssText = 'position:absolute;inset:0;z-index:2;pointer-events:none';
     const origOpen = window.open;
