@@ -133,25 +133,34 @@
   // para que el progreso se comparta entre servidores del mismo idioma
   function resumeKey() {
     const ep = window.EPISODE;
+    if (!ep || !ep.langs || !ep.langs[activeLang]) return null;
     const langName = ep.langs[activeLang].name;
     return 'resume_' + ep.serieId + '_s' + (ep.seasonIdx ?? 0) + '_e' + ep.num + '_' + langName;
   }
 
   function saveProgress(currentTime, duration) {
-    if (!duration || currentTime < 5) return;
+    const key = resumeKey();
+    if (!key || !duration || currentTime < 5) return;
     if (currentTime / duration > 0.95) {
-      localStorage.removeItem(resumeKey());
+      localStorage.removeItem(key);
       return;
     }
-    localStorage.setItem(resumeKey(), String(Math.floor(currentTime)));
+    localStorage.setItem(key, String(Math.floor(currentTime)));
   }
 
   function getSavedTime() {
-    const t = parseInt(localStorage.getItem(resumeKey()) || '0', 10);
+    const key = resumeKey();
+    if (!key) return 0;
+    const t = parseInt(localStorage.getItem(key) || '0', 10);
     return t > 5 ? t : 0;
   }
 
+  let resumeToastShown = false; // Evitar mostrar el toast múltiples veces
+
   function showResumeToast(savedTime, onResume, onDismiss) {
+    if (resumeToastShown) return; // Ya se mostró
+    resumeToastShown = true;
+
     const existing = document.getElementById('vp-resume-overlay');
     if (existing) existing.remove();
 
@@ -213,6 +222,7 @@
     sel.addEventListener('change', () => {
       const idx = +sel.value;
       if (isLang) { activeLang = idx; activeServer = 0; } else { activeServer = idx; }
+      resumeToastShown = false; // Resetear para permitir mostrar el toast en el nuevo servidor
       updateLabels();
       renderPlayer(true);
       sel.remove();
@@ -330,7 +340,7 @@
             const skipBtn = document.createElement('button');
             skipBtn.id = 'vp-skip-intro';
             skipBtn.textContent = 'Omitir intro';
-            skipBtn.style.cssText = 'position:absolute;bottom:80px;right:20px;padding:8px 16px;background:rgba(0,230,118,0.9);color:#000;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer;opacity:0;transition:opacity 0.3s;z-index:9999;pointer-events:auto';
+            skipBtn.style.cssText = 'position:absolute;bottom:100px;right:20px;padding:8px 16px;background:rgba(0,230,118,0.9);color:#000;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer;opacity:0;transition:opacity 0.3s;z-index:9999;pointer-events:auto';
             container.appendChild(skipBtn);
 
             skipBtn.addEventListener('click', (e) => {
@@ -443,27 +453,6 @@
         localStorage.removeItem(resumeKey()); 
       });
 
-      // Botón saltar intro
-      const introEnd = ep.introEnd;
-      if (introEnd > 0) {
-        const skipBtn = document.createElement('button');
-        skipBtn.id = 'vp-skip-intro';
-        skipBtn.textContent = 'Omitir intro';
-        skipBtn.style.cssText = 'position:absolute;bottom:80px;right:20px;padding:8px 16px;background:rgba(0,230,118,0.9);color:#000;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer;opacity:0;transition:opacity 0.3s;z-index:100;pointer-events:auto';
-        wrap.appendChild(skipBtn);
-
-        skipBtn.addEventListener('click', () => {
-          video.currentTime = introEnd;
-          skipBtn.style.opacity = '0';
-        });
-        video.addEventListener('play', () => {
-          if (video.currentTime < introEnd) skipBtn.style.opacity = '1';
-        });
-        video.addEventListener('timeupdate', () => {
-          if (video.currentTime >= introEnd) skipBtn.style.opacity = '0';
-        });
-      }
-
       console.log('Reproductor HTML5 nativo inicializado con:', url);
     }
   }
@@ -540,6 +529,9 @@
   function renderPlayer(animate) {
     const ep   = window.EPISODE;
     const wrap = $('player-wrap');
+
+    // Resetear la bandera del toast al renderizar un nuevo player
+    resumeToastShown = false;
 
     // Destruir HLS anterior inmediatamente para liberar recursos
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
