@@ -61,20 +61,34 @@
       .then(data => {
         let code = data.contents || '';
         if (!code) return url;
+
+        // Intentar extraer directamente del HTML sin desofuscar
+        const direct = extractVideoUrl(code);
+        if (direct) return direct;
+
+        // Intentar desofuscar y extraer
         for (let i = 0; i < 10; i++) {
           const decoded = tryUnpack(code);
           if (!decoded || decoded === code) break;
           code = decoded;
+          const found = extractVideoUrl(code);
+          if (found) return found;
         }
-        return extractVideoUrl(code) || url;
+
+        return url;
       })
       .catch(() => url);
   }
 
   function extractVideoUrl(code) {
     const patterns = [
-      /["']?(?:file|src|url|source|hls|mp4|stream|video)["']?\s*:\s*["'`](https?:\/\/[^"'`\s,}]+)/i,
-      /(?:file|src|url|source)\s*=\s*["'`](https?:\/\/[^"'`\s]+)/i,
+      // jkanime: url: 'https://...'
+      /\burl\s*:\s*['"`](https?:\/\/[^'"`\s,}]+\.m3u8[^'"`\s]*)/i,
+      /\burl\s*:\s*['"`](https?:\/\/[^'"`\s,}]+\.mp4[^'"`\s]*)/i,
+      // file/src/source/hls con : o =
+      /["']?(?:file|src|source|hls|stream|video)["']?\s*:\s*["'`](https?:\/\/[^"'`\s,}]+)/i,
+      /(?:file|src|source)\s*=\s*["'`](https?:\/\/[^"'`\s]+)/i,
+      // URL directa con extensión de video
       /(https?:\/\/[^\s"'`]+\.(?:m3u8|mp4|webm|ogg)(?:\?[^\s"'`]*)?)/i,
     ];
     for (const re of patterns) {
@@ -317,6 +331,24 @@
       wolfInstance = new window.WolfPlayer('#wolf-player-container', wolfConfig);
 
       setTimeout(hideLoader, 2000);
+
+      // Detectar errores de carga
+      setTimeout(() => {
+        const v = container.querySelector('video');
+        if (v) {
+          v.addEventListener('error', (e) => {
+            console.error('❌ Error en video:', e);
+            hideLoader();
+            wrap.innerHTML = `<div class="player-placeholder">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <p>Error al cargar el video</p>
+              <small>El servidor rechazó la conexión (403). Intenta con otro servidor.</small>
+            </div>`;
+          });
+        }
+      }, 1000);
 
       // Acceder al elemento de video interno para guardar progreso y omitir intro
       setTimeout(() => {
