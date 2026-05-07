@@ -121,7 +121,10 @@ const CAT_ICONS_MAP = Object.fromEntries(CATS_CFG.map(c => [c.name, c.icon]));
 let hCatEnabled = localStorage.getItem('h_enabled') === '1';
 let autoWatched = localStorage.getItem('auto_watched') === '1';
 
-const visibleDATA = () => hCatEnabled ? DATA : DATA.filter(d => d.category !== 'H');
+const visibleDATA = () => hCatEnabled ? DATA : DATA.filter(d => {
+  const cats = d.category ? d.category.split(/,\s*/).map(c => c.trim()) : [];
+  return !cats.includes('H');
+});
 const saveHEnabled = () => localStorage.setItem('h_enabled', hCatEnabled ? '1' : '0');
 
 function formatAdded(d) {
@@ -173,7 +176,6 @@ function cardHTML(item, mini = false) {
         <div class="meta-item"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>${item.source}</div>
       </div>
       <div class="card-desc">${item.description}</div>
-      <div class="tags">${item.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
       <div class="card-actions">
         <button class="cta-btn" data-cta="${item.id}">Ver anime</button>
         <button class="mylist-add-btn${(isFav(item.id)||getWatchStatus(item.id))?' in-list':''}" data-mylist="${item.id}" aria-label="Agregar a Mi Lista">
@@ -185,9 +187,21 @@ function cardHTML(item, mini = false) {
   </div>`;
 }
 
+let _sliderAutoTimer = null;
+
 function renderHome() {
   const featured = visibleDATA().filter(d => d.featured);
-  const track = $('slider-track');
+
+  // Limpiar timer anterior
+  clearInterval(_sliderAutoTimer);
+  _sliderAutoTimer = null;
+
+  // Clonar track para eliminar listeners acumulados
+  const oldTrack = $('slider-track');
+  const newTrack = oldTrack.cloneNode(false);
+  oldTrack.parentNode.replaceChild(newTrack, oldTrack);
+  const track = newTrack;
+
   const dotsEl = $('slider-dots');
   const frag = document.createDocumentFragment();
   featured.forEach((item, i) => {
@@ -197,24 +211,14 @@ function renderHome() {
     div.innerHTML = `<div class="slider-poster">
       <div class="slider-poster-bg" style="background:${posterBg(item)}"></div>
       <div class="slider-poster-overlay"></div>
-      <div class="slider-poster-badge">${item.status}</div>
-      <div class="slider-poster-info">
-        <h3>${item.title}</h3>
-        <div class="meta">
-          <span class="eps-pill">${item.episodes} eps</span>
-          <span style="color:rgba(255,255,255,0.4)">·</span>
-          <span>${item.date ? item.date.slice(0,4) : ''}</span>
-        </div>
-      </div>
+      <div class="slider-poster-eps">${item.episodes} eps</div>
     </div>`;
     frag.appendChild(div);
   });
-  track.innerHTML = '';
   track.appendChild(frag);
   dotsEl.innerHTML = featured.map((_, i) => `<div class="dot${i===0?' active':''}" data-dot="${i}"></div>`).join('');
 
   let autoIdx = 0;
-  let autoTimer = null;
 
   function getCardW() {
     return (track.querySelector('.slider-card')?.offsetWidth || 120) + 12;
@@ -227,8 +231,8 @@ function renderHome() {
   }
 
   function startAuto() {
-    clearInterval(autoTimer);
-    autoTimer = setInterval(() => goTo(autoIdx + 1), 3000);
+    clearInterval(_sliderAutoTimer);
+    _sliderAutoTimer = setInterval(() => goTo(autoIdx + 1), 3000);
   }
 
   track.addEventListener('scroll', debounce(() => {
@@ -239,11 +243,9 @@ function renderHome() {
     }
   }, 80), { passive: true });
 
-  // Pausa al tocar, reanuda al soltar
-  track.addEventListener('touchstart', () => clearInterval(autoTimer), { passive: true });
+  track.addEventListener('touchstart', () => clearInterval(_sliderAutoTimer), { passive: true });
   track.addEventListener('touchend', () => startAuto(), { passive: true });
 
-  // Exponer goTo para los dots
   track._sliderGoTo = goTo;
 
   startAuto();
@@ -266,8 +268,6 @@ function recentCardHTML(item, num) {
       <div class="recent-title">${item.title}</div>
       <div class="recent-meta">
         <span class="recent-pill">${item.episodes} eps</span>
-        <span class="recent-pill">${item.genre}</span>
-        <span class="recent-pill${item.status==='En emisión'?' green':''}">${item.status}</span>
       </div>
       <div class="recent-date">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -299,13 +299,11 @@ function searchCardHTML(item, purple = false) {
     </div>
     <div class="scard-body">
       <div class="scard-title">${item.title}</div>
-      <div class="scard-genre">${item.genre}</div>
       <div class="scard-pills">
         <span class="scard-pill">${item.episodes} eps</span>
         <span class="scard-pill">${item.readTime}</span>
         <span class="scard-pill">${item.date ? item.date.slice(0,4) : ''}</span>
       </div>
-      <div class="scard-tags">${item.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
     </div>
   </div>`;
 }
@@ -338,16 +336,15 @@ function renderCategories() {
   const catGrid = $('cat-grid');
   const visibleCats = hCatEnabled ? [...CATEGORIES, 'H'] : CATEGORIES;
   catGrid.innerHTML = visibleCats.map(cat => {
-    const count = visibleDATA().filter(d => d.category === cat).length;
+    const count = visibleDATA().filter(d => d.category === cat || (d.category && d.category.split(/,\s*/).map(c=>c.trim()).includes(cat))).length;
     const bg     = CAT_COLORS[cat]     || 'linear-gradient(135deg,#2d3436,#636e72)';
     const accent = CAT_ACCENT[cat]     || '#fff';
     const icon   = CAT_ICONS_MAP[cat]  || '';
-    return `<div class="cat-card" data-cat="${cat}" style="--cat-bg:${bg}">
-      <div class="cat-card-bg" style="background:${bg}"></div>
+    return `<div class="cat-card" data-cat="${cat}">
       <div class="cat-card-overlay"></div>
-      <div class="cat-card-icon" style="color:${accent}">${icon}</div>
+      <div class="cat-card-icon" style="color:${accent};background:rgba(0,0,0,0.25);border-color:${accent}33">${icon}</div>
       <div class="cat-card-info">
-        <h3 style="color:var(--accent)">${cat}</h3>
+        <h3>${cat}</h3>
         <span>${count} serie${count !== 1 ? 's' : ''}</span>
       </div>
     </div>`;
@@ -356,8 +353,17 @@ function renderCategories() {
 
 function renderCatLibrary(cat) {
   $('cat-library-title').textContent = cat === 'H' ? 'Contenido H' : cat;
-  const cards = DATA.filter(d => d.category === cat).map(d => searchCardHTML(d, cat === 'H')).join('');
-  $('cat-library-grid').innerHTML = cards;
+  const items = DATA.filter(d => d.category === cat || (d.category && d.category.split(/,\s*/).map(c=>c.trim()).includes(cat)));
+  if (items.length === 0) {
+    $('cat-library-grid').innerHTML = `
+      <div class="empty-state" style="grid-column:1/-1;padding:60px 20px;text-align:center">
+        <span style="font-size:48px">📭</span>
+        <p style="margin-top:12px;font-size:16px;font-weight:700;color:var(--text2)">Sin contenido aún</p>
+        <small style="color:var(--text3);font-size:13px">No hay series en esta categoría todavía</small>
+      </div>`;
+  } else {
+    $('cat-library-grid').innerHTML = items.map(d => searchCardHTML(d, cat === 'H')).join('');
+  }
 }
 
 function renderAllLibrary() {
@@ -374,7 +380,6 @@ function myListCardHTML(item) {
     </div>
     <div class="scard-body">
       <div class="scard-title">${item.title}</div>
-      <div class="scard-genre">${item.genre}</div>
       <div class="scard-pills">
         <span class="scard-pill">${item.episodes} eps</span>
         <span class="scard-pill">${item.readTime}</span>
@@ -421,11 +426,17 @@ function renderFavorites() {
 function renderProfile() {
   const favCount = favs.length;
   $('fav-badge-profile').textContent = favCount;
+  
+  // Contar categorías visibles (incluir H solo si está habilitado)
+  const visibleCategories = hCatEnabled 
+    ? CATS_CFG.map(c => c.name) 
+    : CATS_CFG.filter(c => !c.isH).map(c => c.name);
+  
   const stats = $('profile-stats');
   stats.innerHTML = `
-    <div class="stat-item"><div class="stat-num">${DATA.length}</div><div class="stat-label">Series</div></div>
+    <div class="stat-item"><div class="stat-num">${visibleDATA().length}</div><div class="stat-label">Series</div></div>
     <div class="stat-item"><div class="stat-num">${favCount}</div><div class="stat-label">Favoritos</div></div>
-    <div class="stat-item"><div class="stat-num">${CATEGORIES.length}</div><div class="stat-label">Géneros</div></div>
+    <div class="stat-item"><div class="stat-num">${visibleCategories.length}</div><div class="stat-label">Géneros</div></div>
   `;
   const pill = $('h-toggle-pill');
   if (pill) pill.classList.toggle('active', hCatEnabled);
@@ -433,6 +444,16 @@ function renderProfile() {
   if (awPill) awPill.classList.toggle('active', autoWatched);
   const versionEl = $('profile-version');
   if (versionEl) versionEl.textContent = CFG.version || '1.0.0';
+  // Botón solicitar contenido
+  const reqBtn = $('request-content-btn');
+  if (reqBtn) {
+    if (CFG.requestContentUrl) {
+      reqBtn.style.display = '';
+      reqBtn.onclick = () => location.href = CFG.requestContentUrl;
+    } else {
+      reqBtn.style.display = 'none';
+    }
+  }
 }
 
 function renderDetail(item) {
@@ -457,6 +478,7 @@ function renderDetail(item) {
       </button>
     </div>
     <div class="detail-img" style="background:${backdropBg(item)}">
+      <div class="detail-poster" style="background:${posterBg(item)}"></div>
       <button class="detail-fav-btn${fav ? ' active' : ''}" id="detail-fav-btn" aria-label="Favorito">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="${fav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
       </button>
@@ -464,7 +486,6 @@ function renderDetail(item) {
     <div class="detail-content">
       <div class="detail-badges">
         <span class="detail-badge ${getStatusClass(item.status)}">${item.status}</span>
-        <span class="detail-badge status-off">${item.genre}</span>
         <span class="detail-badge status-off">${item.date ? item.date.slice(0,4) : ''}</span>
       </div>
       <h1 class="detail-title">${item.title}</h1>
@@ -487,7 +508,17 @@ function renderDetail(item) {
       </div>
 
       <div class="detail-tab-panel" id="tab-synopsis">
-        <div class="detail-tags">${item.tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+        <div class="detail-tags">${(() => {
+          const maxTags = 5;
+          const visibleTags = item.tags.slice(0, maxTags);
+          const hiddenTags = item.tags.slice(maxTags);
+          let html = visibleTags.map(t=>`<span class="tag">${t}</span>`).join('');
+          if (hiddenTags.length > 0) {
+            html += hiddenTags.map(t => `<span class="tag tag-hidden">${t}</span>`).join('');
+            html += `<button class="tag-show-more" data-show-tags>Ver más (${hiddenTags.length})</button>`;
+          }
+          return html;
+        })()}</div>
         <p class="detail-desc">${item.description}</p>
       </div>
 
@@ -502,7 +533,36 @@ function renderDetail(item) {
           <div class="detail-meta-item"><div class="val">${item.date ? item.date.slice(0,4) : '—'}</div><div class="lbl">Año</div></div>
         </div>
         <div class="detail-info-list">
-          <div class="detail-info-row"><span>Género</span><span>${item.genre}</span></div>
+          <div class="detail-info-row detail-info-genres">
+            <span>Géneros</span>
+            <div class="detail-genres-tags">
+              ${(() => {
+                // Separar el campo genre por diferentes separadores posibles
+                let genres = [];
+                if (item.genre.includes(' / ')) {
+                  genres = item.genre.split(' / ').map(g => g.trim());
+                } else if (item.genre.includes('/')) {
+                  genres = item.genre.split('/').map(g => g.trim());
+                } else if (item.genre.includes(',')) {
+                  genres = item.genre.split(',').map(g => g.trim());
+                } else {
+                  // Si no hay separador, es un solo género
+                  genres = [item.genre];
+                }
+                
+                const maxGenres = 3;
+                const visibleGenres = genres.slice(0, maxGenres);
+                const hiddenGenres = genres.slice(maxGenres);
+                
+                let html = visibleGenres.map(g => `<span class="tag">${g}</span>`).join('');
+                if (hiddenGenres.length > 0) {
+                  html += hiddenGenres.map(g => `<span class="tag tag-hidden">${g}</span>`).join('');
+                  html += `<button class="tag-show-more" data-show-genres>Ver más (${hiddenGenres.length})</button>`;
+                }
+                return html;
+              })()}
+            </div>
+          </div>
           <div class="detail-info-row"><span>Estado</span><span>${item.status}</span></div>
           <div class="detail-info-row"><span>Estreno</span><span>${item.date}</span></div>
           <div class="detail-info-row"><span>Fuente</span><span>${item.source}</span></div>
@@ -533,6 +593,61 @@ function renderDetail(item) {
   document.getElementById('detail-mylist-btn').addEventListener('click', () => {
     openMyListModal(item.id);
   });
+
+  // Event listeners para botones "Ver más" de tags y géneros
+  const showTagsBtn = $('detail-inner').querySelector('[data-show-tags]');
+  if (showTagsBtn) {
+    showTagsBtn.addEventListener('click', (e) => {
+      const btn = e.target;
+      const container = btn.parentElement;
+      const allTags = Array.from(container.querySelectorAll('.tag')).filter(t => !t.classList.contains('tag-show-more'));
+      const maxVisible = 5;
+      const isExpanded = btn.dataset.expanded === 'true';
+      
+      if (isExpanded) {
+        // Colapsar: ocultar tags después del máximo
+        allTags.forEach((tag, index) => {
+          if (index >= maxVisible) {
+            tag.classList.add('tag-hidden');
+          }
+        });
+        btn.textContent = `Ver más (${allTags.length - maxVisible})`;
+        btn.dataset.expanded = 'false';
+      } else {
+        // Expandir: mostrar todos los tags
+        allTags.forEach(tag => tag.classList.remove('tag-hidden'));
+        btn.textContent = 'Ver menos';
+        btn.dataset.expanded = 'true';
+      }
+    });
+  }
+
+  const showGenresBtn = $('detail-inner').querySelector('[data-show-genres]');
+  if (showGenresBtn) {
+    showGenresBtn.addEventListener('click', (e) => {
+      const btn = e.target;
+      const container = btn.parentElement;
+      const allTags = Array.from(container.querySelectorAll('.tag')).filter(t => !t.classList.contains('tag-show-more'));
+      const maxVisible = 3;
+      const isExpanded = btn.dataset.expanded === 'true';
+      
+      if (isExpanded) {
+        // Colapsar: ocultar géneros después del máximo
+        allTags.forEach((tag, index) => {
+          if (index >= maxVisible) {
+            tag.classList.add('tag-hidden');
+          }
+        });
+        btn.textContent = `Ver más (${allTags.length - maxVisible})`;
+        btn.dataset.expanded = 'false';
+      } else {
+        // Expandir: mostrar todos los géneros
+        allTags.forEach(tag => tag.classList.remove('tag-hidden'));
+        btn.textContent = 'Ver menos';
+        btn.dataset.expanded = 'true';
+      }
+    });
+  }
 }
 
 function navigateTo(view, back = false) {
@@ -700,36 +815,43 @@ function openRemoveConfirm(id) {
   _removeTargetId = id;
   const hasFav = isFav(id);
   const hasWs  = !!getWatchStatus(id);
-  const filter = state.favFilter; // 'all' | 'fav' | 'Viendo' | 'Completado' | 'Pendiente'
+  const filter = state.favFilter;
 
   const desc = document.getElementById('remove-confirm-desc');
   if (desc) desc.textContent = item.title;
 
+  const title = document.querySelector('.remove-confirm-title');
   const optFav = document.getElementById('remove-opt-fav');
   const optWs  = document.getElementById('remove-opt-ws');
   const wsLabel = document.getElementById('remove-opt-ws-label');
+  const acceptBtn = document.getElementById('remove-confirm-accept');
+  const options = document.getElementById('remove-confirm-options');
 
-  // Mostrar opciones según el tab activo
-  const showFav = hasFav && (filter === 'all' || filter === 'fav');
-  const showWs  = hasWs  && (filter === 'all' || (filter !== 'fav'));
+  const tabNames = { fav: 'Favoritos', Viendo: 'Viendo', Completado: 'Completado', Pendiente: 'Pendiente' };
 
-  if (optFav) optFav.style.display = showFav ? '' : 'none';
-  if (optWs)  optWs.style.display  = showWs  ? '' : 'none';
-
-  if (wsLabel && hasWs) {
-    const ws = getWatchStatus(id);
-    wsLabel.textContent = `Quitar estado "${ws}"`;
+  if (filter !== 'all') {
+    // Tab específico: título directo, sin opciones
+    if (title) title.textContent = `¿Eliminar de ${tabNames[filter] || filter}?`;
+    if (options) options.style.display = 'none';
+    if (acceptBtn) { acceptBtn.textContent = 'Eliminar'; acceptBtn.disabled = false; }
+    _removeSelFav = filter === 'fav';
+    _removeSelWs  = filter !== 'fav';
+  } else {
+    // Tab "Todos": opciones con checkboxes
+    if (title) title.textContent = '¿Qué deseas eliminar?';
+    if (options) options.style.display = '';
+    if (optFav) optFav.style.display = hasFav ? '' : 'none';
+    if (optWs)  optWs.style.display  = hasWs  ? '' : 'none';
+    if (wsLabel && hasWs) wsLabel.textContent = `Quitar estado "${getWatchStatus(id)}"`;
+    _removeSelFav = hasFav;
+    _removeSelWs  = hasWs;
+    const chkFav = document.getElementById('remove-chk-fav');
+    const chkWs  = document.getElementById('remove-chk-ws');
+    if (chkFav) chkFav.classList.toggle('checked', _removeSelFav);
+    if (chkWs)  chkWs.classList.toggle('checked', _removeSelWs);
+    if (acceptBtn) acceptBtn.textContent = 'Eliminar';
+    _updateRemoveAcceptBtn();
   }
-
-  _removeSelFav = showFav;
-  _removeSelWs  = showWs;
-
-  const chkFav = document.getElementById('remove-chk-fav');
-  const chkWs  = document.getElementById('remove-chk-ws');
-  if (chkFav) chkFav.classList.toggle('checked', _removeSelFav);
-  if (chkWs)  chkWs.classList.toggle('checked', _removeSelWs);
-
-  _updateRemoveAcceptBtn();
 
   const o = document.getElementById('remove-confirm-overlay');
   o.classList.add('open');
@@ -846,6 +968,14 @@ document.addEventListener('click', e => {
 
 const searchInputEl = $('search-input');
 const searchClearEl = $('search-clear');
+
+// Ocultar X nativa del navegador
+if (searchInputEl) {
+  searchInputEl.setAttribute('type', 'text');
+  // Prevenir que el navegador agregue su propia X
+  searchInputEl.addEventListener('search', (e) => e.preventDefault());
+}
+
 searchInputEl.addEventListener('input', debounce(e => {
   const q = e.target.value;
   searchClearEl.classList.toggle('visible', q.length > 0);
@@ -886,7 +1016,11 @@ function init() {
     if (state.view === 'all-library') renderAllLibrary();
   }
 
-  document.getElementById('h-toggle-item').addEventListener('click', () => {
+  document.getElementById('h-toggle-item').addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    
     if (hCatEnabled) {
       hCatEnabled = false;
       applyHToggle();
@@ -895,6 +1029,8 @@ function init() {
       o.classList.add('open');
       o.setAttribute('aria-hidden', 'false');
     }
+    
+    return false;
   });
 
   document.getElementById('h-confirm-accept').addEventListener('click', () => {
@@ -971,8 +1107,15 @@ function init() {
     const aboutDesc = o.querySelector('.about-body > p');
     const aboutFooter = o.querySelector('.about-footer');
     if (aboutTitle) aboutTitle.textContent = appName;
-    if (aboutDesc) aboutDesc.textContent = `${appName} es tu plataforma personal para descubrir, organizar y seguir el anime que más te gusta.`;
+    if (aboutDesc) aboutDesc.textContent = CFG.aboutDescription || `${appName} es tu plataforma personal para descubrir, organizar y seguir el anime que más te gusta.`;
     if (aboutFooter) aboutFooter.textContent = `Desarrollado por ${CFG.developerName || 'ANiGo Team'}`;
+    // Características dinámicas
+    const featuresEl = o.querySelector('.about-features');
+    if (featuresEl && CFG.aboutFeatures && CFG.aboutFeatures.length) {
+      featuresEl.innerHTML = CFG.aboutFeatures.map(f =>
+        `<div class="about-feature">${f.icon || ''}<span>${f.text || f}</span></div>`
+      ).join('');
+    }
     // Versión en el subtítulo del modal
     const aboutVersion = o.querySelector('.modal-genre');
     if (aboutVersion) aboutVersion.textContent = `v${CFG.version || '1.0.0'}`;
