@@ -129,35 +129,25 @@
   let hideTimer    = null;
 
   // ── Progreso / continuar viendo ───────────────────────────
-  // La clave incluye un hash de la URL para que el progreso sea
-  // exclusivo del video exacto (servidor + idioma). Si cambia la URL
-  // no aparece el toast de continuar viendo.
-  function urlHash(str) {
-    let h = 0;
-    for (let i = 0; i < str.length; i++) {
-      h = Math.imul(31, h) + str.charCodeAt(i) | 0;
-    }
-    return (h >>> 0).toString(36);
-  }
-
-  function resumeKey(url) {
+  // La clave ahora solo incluye serie, temporada, episodio y idioma
+  // para que el progreso se comparta entre servidores del mismo idioma
+  function resumeKey() {
     const ep = window.EPISODE;
-    const base = 'resume_' + ep.serieId + '_s' + (ep.seasonIdx ?? 0) + '_e' + ep.num;
-    return url ? base + '_' + urlHash(url) : base;
+    const langName = ep.langs[activeLang].name;
+    return 'resume_' + ep.serieId + '_s' + (ep.seasonIdx ?? 0) + '_e' + ep.num + '_' + langName;
   }
 
-  function saveProgress(url, currentTime, duration) {
-    if (!url || !duration || currentTime < 5) return;
+  function saveProgress(currentTime, duration) {
+    if (!duration || currentTime < 5) return;
     if (currentTime / duration > 0.95) {
-      localStorage.removeItem(resumeKey(url));
+      localStorage.removeItem(resumeKey());
       return;
     }
-    localStorage.setItem(resumeKey(url), String(Math.floor(currentTime)));
+    localStorage.setItem(resumeKey(), String(Math.floor(currentTime)));
   }
 
-  function getSavedTime(url) {
-    if (!url) return 0;
-    const t = parseInt(localStorage.getItem(resumeKey(url)) || '0', 10);
+  function getSavedTime() {
+    const t = parseInt(localStorage.getItem(resumeKey()) || '0', 10);
     return t > 5 ? t : 0;
   }
 
@@ -282,7 +272,7 @@
         poster: poster || '',
         autoplay: false,
         color: '#00E676',
-        title: ep.title || 'Reproduciendo',
+        title: '',
         volume: 0.8
       });
 
@@ -294,17 +284,17 @@
         if (v) {
           let saveInterval = null;
           v.addEventListener('loadedmetadata', () => {
-            const saved = getSavedTime(url);
+            const saved = getSavedTime();
             if (saved > 0 && v.duration > 0 && saved < v.duration * 0.95) {
               showResumeToast(saved, () => { v.currentTime = saved; }, () => {});
             }
             saveInterval = setInterval(() => {
-              if (!v.paused && !v.ended) saveProgress(url, v.currentTime, v.duration);
+              if (!v.paused && !v.ended) saveProgress(v.currentTime, v.duration);
             }, 5000);
           });
           v.addEventListener('ended', () => { 
             clearInterval(saveInterval); 
-            localStorage.removeItem(resumeKey(url)); 
+            localStorage.removeItem(resumeKey()); 
           });
 
           // Botón saltar intro
@@ -390,17 +380,17 @@
       // Guardar progreso
       let saveInterval = null;
       video.addEventListener('loadedmetadata', () => {
-        const saved = getSavedTime(url);
+        const saved = getSavedTime();
         if (saved > 0 && video.duration > 0 && saved < video.duration * 0.95) {
           showResumeToast(saved, () => { video.currentTime = saved; }, () => {});
         }
         saveInterval = setInterval(() => {
-          if (!video.paused && !video.ended) saveProgress(url, video.currentTime, video.duration);
+          if (!video.paused && !video.ended) saveProgress(video.currentTime, video.duration);
         }, 5000);
       });
       video.addEventListener('ended', () => { 
         clearInterval(saveInterval); 
-        localStorage.removeItem(resumeKey(url)); 
+        localStorage.removeItem(resumeKey()); 
       });
 
       // Botón saltar intro
