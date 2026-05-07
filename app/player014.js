@@ -8,9 +8,9 @@
 
   // Lista de proxies CORS en orden de prioridad
   const CORS_PROXIES = [
+    url => `https://calm-water-d0e3.yt-thesthipoficial.workers.dev/?url=${encodeURIComponent(url)}`,
     url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&user_agent=${encodeURIComponent(DESKTOP_UA)}`,
     url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
   ];
 
   function proxyFetch(url, timeoutMs) {
@@ -81,60 +81,63 @@
     console.group('🔍 resolveUrl:', url);
     console.log('⏳ Fetching via proxy...');
 
-    return proxyFetch(url)
+    // Timeout agresivo: si tarda más de 5s, mostrar iframe directamente
+    const timeout = new Promise(resolve => setTimeout(() => {
+      console.warn('⏱️ Timeout — mostrando iframe directamente');
+      console.groupEnd();
+      resolve(url);
+    }, 5000));
+
+    const extract = proxyFetch(url)
       .then(data => {
         let code = data.contents || '';
         console.log('📄 HTML recibido:', code.length, 'chars');
-        console.log('📄 Primeros 500 chars:', code.slice(0, 500));
         if (!code) { console.warn('⚠️ HTML vacío'); console.groupEnd(); return url; }
 
         // Capa 1: extraer directo del HTML crudo
         let found = extractVideoUrl(code);
         if (found) { console.log('✅ Capa 1 (HTML crudo):', found); console.groupEnd(); return found; }
-        console.log('❌ Capa 1: no encontrado');
 
-        // Capa 2: buscar bloques <script> y extraer de cada uno
+        // Capa 2: buscar en cada bloque <script>
         const scripts = [...code.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
-        console.log('📜 Scripts encontrados:', scripts.length);
         for (let si = 0; si < scripts.length; si++) {
-          const scriptContent = scripts[si][1];
-          console.log(`  Script #${si+1} (${scriptContent.length} chars):`, scriptContent.slice(0, 200));
-          found = extractVideoUrl(scriptContent);
+          found = extractVideoUrl(scripts[si][1]);
           if (found) { console.log(`✅ Capa 2 (script #${si+1}):`, found); console.groupEnd(); return found; }
         }
-        console.log('❌ Capa 2: no encontrado');
 
-        // Capa 3: desofuscar iterativamente
+        // Capa 3: desofuscar HTML completo
         let current = code;
-        for (let i = 0; i < 15; i++) {
+        for (let i = 0; i < 10; i++) {
           const decoded = tryUnpack(current);
-          if (!decoded || decoded === current) { console.log(`  Desofuscación global: paró en capa ${i}`); break; }
+          if (!decoded || decoded === current) break;
           current = decoded;
-          console.log(`  Capa 3.${i+1} desofuscado (${current.length} chars):`, current.slice(0, 200));
           found = extractVideoUrl(current);
           if (found) { console.log(`✅ Capa 3 (desofuscado ${i+1}):`, found); console.groupEnd(); return found; }
         }
-        console.log('❌ Capa 3: no encontrado');
 
-        // Capa 4: scripts desofuscados individualmente
+        // Capa 4: desofuscar cada script individualmente
         for (let si = 0; si < scripts.length; si++) {
-          let scriptCode = scripts[si][1];
-          for (let i = 0; i < 10; i++) {
-            const decoded = tryUnpack(scriptCode);
-            if (!decoded || decoded === scriptCode) break;
-            scriptCode = decoded;
-            console.log(`  Script #${si+1} capa ${i+1}:`, scriptCode.slice(0, 200));
-            found = extractVideoUrl(scriptCode);
-            if (found) { console.log(`✅ Capa 4 (script #${si+1} desofuscado ${i+1}):`, found); console.groupEnd(); return found; }
+          let sc = scripts[si][1];
+          for (let i = 0; i < 8; i++) {
+            const decoded = tryUnpack(sc);
+            if (!decoded || decoded === sc) break;
+            sc = decoded;
+            found = extractVideoUrl(sc);
+            if (found) { console.log(`✅ Capa 4 (script #${si+1} capa ${i+1}):`, found); console.groupEnd(); return found; }
           }
         }
-        console.log('❌ Capa 4: no encontrado');
 
-        console.warn('⚠️ No se encontró URL de video. Retornando URL original.');
+        console.warn('⚠️ No se encontró URL — usando iframe');
         console.groupEnd();
         return url;
       })
-      .catch(e => { console.error('❌ Error fetch:', e); console.groupEnd(); return url; });
+      .catch(e => {
+        console.error('❌ Error fetch:', e.message, '— usando iframe');
+        console.groupEnd();
+        return url;
+      });
+
+    return Promise.race([extract, timeout]);
   }
 
   function extractVideoUrl(code) {
