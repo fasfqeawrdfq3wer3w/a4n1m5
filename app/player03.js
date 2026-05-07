@@ -320,19 +320,48 @@
         const v = container.querySelector('video');
         if (v) {
           let saveInterval = null;
-          v.addEventListener('loadedmetadata', () => {
+          let resumeChecked = false;
+
+          const checkResume = () => {
+            if (resumeChecked) return;
+            resumeChecked = true;
             const saved = getSavedTime();
             if (saved > 0 && v.duration > 0 && saved < v.duration * 0.95) {
               showResumeToast(saved, () => { v.currentTime = saved; }, () => {});
             }
-            saveInterval = setInterval(() => {
-              if (!v.paused && !v.ended) saveProgress(v.currentTime, v.duration);
-            }, 5000);
+          };
+
+          const doSave = () => {
+            if (v.duration > 0) saveProgress(v.currentTime, v.duration);
+          };
+
+          v.addEventListener('loadedmetadata', checkResume);
+          v.addEventListener('canplay', checkResume);
+
+          v.addEventListener('play', () => {
+            if (!saveInterval) {
+              saveInterval = setInterval(doSave, 3000); // Guardar cada 3 segundos
+            }
           });
+
+          v.addEventListener('pause', doSave);
+          v.addEventListener('seeked', doSave);
+          v.addEventListener('timeupdate', () => {
+            // Guardar también en timeupdate cada 5 segundos
+            if (!v._lastSave || Date.now() - v._lastSave > 5000) {
+              v._lastSave = Date.now();
+              doSave();
+            }
+          });
+
           v.addEventListener('ended', () => { 
-            clearInterval(saveInterval); 
-            localStorage.removeItem(resumeKey()); 
+            clearInterval(saveInterval);
+            const key = resumeKey();
+            if (key) localStorage.removeItem(key);
           });
+
+          // Guardar al salir de la página
+          window.addEventListener('beforeunload', doSave);
 
           // Botón saltar intro para Wolf Player
           const introEnd = ep.introEnd;
