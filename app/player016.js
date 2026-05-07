@@ -44,7 +44,8 @@
   }
 
   function isDirectVideo(url) {
-    // Extensión al final o tipo en el path (ej: /m3u8/hash, /mp4/hash)
+    // Restaurar flexibilidad para capturar m3u8/mp4 en cualquier parte del path
+    // El fallback automático en buildVideoPlayer se encargará si falla
     return /\.(mp4|webm|ogg|m3u8)(\?.*)?$/i.test(url) ||
            /[\/=](mp4|webm|ogg|m3u8)[\/\?&]?/i.test(url);
   }
@@ -60,10 +61,11 @@
     if (/\.(mp4|webm|ogg)(\?.*)?$/i.test(url)) return Promise.resolve('mp4');
     if (/\.m3u8(\?.*)?$/i.test(url)) return Promise.resolve('hls');
 
-    // Si parece un player embed (dominio con /play/, /embed/, /player/, etc.)
-    // no intentar fetch — es una página web, no un archivo de video
-    if (/\/(play|embed|player|watch|stream|video)\//i.test(url)) return Promise.resolve('iframe');
-    if (/\/(play|embed|player|watch)\b/i.test(url)) return Promise.resolve('iframe');
+    // Solo tratar como iframe directamente si tiene palabras clave MUY específicas de embeds
+    // y no parece tener una extensión de video
+    if (/\/(play|embed|player|watch)\//i.test(url) && !/\.(mp4|webm|m3u8)/i.test(url)) {
+        return Promise.resolve('iframe');
+    }
 
     // Intentar HEAD request directo (sin proxy) para ver Content-Type
     return fetch(url, { method: 'HEAD', mode: 'no-cors' })
@@ -159,8 +161,8 @@
       /["']?(?:file|src|source|hls|stream|video)["']?\s*:\s*["'`](https?:\/\/[^"'`\s,}]{10,})/i,
       // file/src/source con =
       /(?:file|src|source)\s*=\s*["'`](https?:\/\/[^"'`\s]{10,})/i,
-      // URL directa con extensión de video
-      /(https?:\/\/[^\s"'`<>]{10,}\.(?:m3u8|mp4|webm|ogg)(?:\?[^\s"'`<>]*)?)/i,
+      // URL directa con extensión de video pero al final
+      /(https?:\/\/[^\s"'`<>]{10,}\.(?:m3u8|mp4|webm|ogg)(?:\?[^\s"'`<>]*)?$)/i,
     ];
     for (const re of patterns) {
       const m = code.match(re);
@@ -340,7 +342,7 @@
   // ── Reproductor con Wolf Player ──────────────────────────────
   let wolfInstance = null;
 
-  function buildVideoPlayer(wrap, url, poster, videoType, mainLoader) {
+  function buildVideoPlayer(wrap, url, poster, videoType, mainLoader, server) {
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
     if (wolfInstance) {
       if (typeof wolfInstance.destroy === 'function') wolfInstance.destroy();
@@ -421,6 +423,16 @@
         if (v) {
           v.addEventListener('error', (e) => {
             console.error('❌ Error en video:', e);
+            
+            // FALLBACK: Si falla el video directo, intentar iframe del servidor original
+            if (server && server.url && url !== server.url) {
+                console.warn('⚠️ Fallback a iframe del servidor original...');
+                wrap.innerHTML = '';
+                const newLoader = createLoadingOverlay(wrap);
+                loadIframe(wrap, server.url, server, newLoader);
+                return;
+            }
+
             hideLoader();
             wrap.innerHTML = `<div class="player-placeholder">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -770,11 +782,11 @@
         }
 
         if (isDirectVideo(url)) {
-          buildVideoPlayer(wrap, url, poster, isHLS(url) ? 'hls' : 'mp4', loader);
+          buildVideoPlayer(wrap, url, poster, isHLS(url) ? 'hls' : 'mp4', loader, server);
         } else if (/^https?:\/\//i.test(url)) {
           detectVideoType(url).then(videoType => {
             if (videoType === 'hls' || videoType === 'mp4') {
-              buildVideoPlayer(wrap, url, poster, videoType, loader);
+              buildVideoPlayer(wrap, url, poster, videoType, loader, server);
             } else {
               loadIframe(wrap, url, server, loader);
             }
