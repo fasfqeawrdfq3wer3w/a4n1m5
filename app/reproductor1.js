@@ -58,8 +58,8 @@
   // la extensión no es suficiente para determinarlo
   function detectVideoType(url) {
     // Si la URL ya tiene extensión reconocible, no hace falta fetch
-    if (/\.(mp4|webm|ogg)(\?.*)?$/i.test(url)) return Promise.resolve('mp4');
-    if (/\.m3u8(\?.*)?$/i.test(url)) return Promise.resolve('hls');
+    if (/\.(mp4|webm|ogg)(?:[\/\?&]|$)/i.test(url)) return Promise.resolve('mp4');
+    if (/\.m3u8(?:[\/\?&]|$)/i.test(url)) return Promise.resolve('hls');
 
     // Solo tratar como iframe directamente si tiene palabras clave MUY específicas de embeds
     // y no parece tener una extensión de video
@@ -74,9 +74,12 @@
           .then(data => {
             const ct = (data.content_type || '').toLowerCase();
             if (ct.includes('mpegurl') || ct.includes('x-mpegurl') || ct.includes('m3u8')) return 'hls';
-            if (ct.includes('mp4') || ct.includes('video/') || ct.includes('octet-stream')) return 'mp4';
-            const body = (data.contents || '').trimStart();
-            if (body.startsWith('#EXTM3U')) return 'hls';
+            if (ct.includes('mp4') || ct.includes('video/') || ct.includes('octet-stream')) {
+                const body = (data.contents || '').trimStart();
+                if (body.startsWith('#EXTM3U')) return 'hls';
+                if (body.toLowerCase().startsWith('<html') || body.toLowerCase().startsWith('<!doctype')) return 'iframe';
+                return 'mp4';
+            }
             return 'iframe';
           });
       })
@@ -161,8 +164,8 @@
       /["']?(?:file|src|source|hls|stream|video)["']?\s*:\s*["'`](https?:\/\/[^"'`\s,}]{10,})/i,
       // file/src/source con =
       /(?:file|src|source)\s*=\s*["'`](https?:\/\/[^"'`\s]{10,})/i,
-      // URL directa con extensión de video pero al final
-      /(https?:\/\/[^\s"'`<>]{10,}\.(?:m3u8|mp4|webm|ogg)(?:\?[^\s"'`<>]*)?$)/i,
+      // URL directa con extensión de video
+      /(https?:\/\/[^\s"'`<>]{10,}\.(?:m3u8|mp4|webm|ogg)(?:\?[^\s"'`<>]*)?)/i,
     ];
     for (const re of patterns) {
       const m = code.match(re);
@@ -424,12 +427,13 @@
           v.addEventListener('error', (e) => {
             console.error('❌ Error en video:', e);
             
-            // FALLBACK: Si falla el video directo, intentar iframe del servidor original
-            if (server && server.url && url !== server.url) {
-                console.warn('⚠️ Fallback a iframe del servidor original...');
+            // FALLBACK: Si falla el video directo, intentar iframe
+            if (server && server.url) {
+                const fallbackUrl = (url !== server.url) ? server.url : url;
+                console.warn('⚠️ Fallback a iframe:', fallbackUrl);
                 wrap.innerHTML = '';
                 const newLoader = createLoadingOverlay(wrap);
-                loadIframe(wrap, server.url, server, newLoader);
+                loadIframe(wrap, fallbackUrl, server, newLoader);
                 return;
             }
 
@@ -767,8 +771,14 @@
       const server = ep.langs[activeLang].servers[activeServer];
 
       resolveUrl(server).then(resolved => {
-        const url    = typeof resolved === 'object' ? resolved.url    : resolved;
+        let url    = typeof resolved === 'object' ? resolved.url    : resolved;
         const poster = typeof resolved === 'object' ? resolved.poster : (ep.poster || '');
+
+        // Transformation: pixeldrain.com/u/ID -> pixeldrain.com/api/file/ID
+        if (url && url.includes('pixeldrain.com/u/')) {
+            url = url.replace('pixeldrain.com/u/', 'pixeldrain.com/api/file/');
+            console.log('🔄 PixelDrain transformado:', url);
+        }
 
         updateCast(url);
 
