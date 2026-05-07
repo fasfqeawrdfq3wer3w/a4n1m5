@@ -44,12 +44,14 @@
   }
 
   function isDirectVideo(url) {
+    if (url.includes('pixeldrain.com')) return false;
     // Restaurar flexibilidad para capturar m3u8/mp4 en cualquier parte del path
     // El fallback automático en buildVideoPlayer se encargará si falla
     return /\.(mp4|webm|ogg|m3u8)(\?.*)?$/i.test(url) ||
            /[\/=](mp4|webm|ogg|m3u8)[\/\?&]?/i.test(url);
   }
   function isHLS(url) {
+    if (url.includes('pixeldrain.com')) return false;
     return /\.m3u8(\?.*)?$/i.test(url) ||
            /[\/=]m3u8[\/\?&]?/i.test(url);
   }
@@ -57,9 +59,11 @@
   // Detecta el tipo real de una URL haciendo HEAD request cuando
   // la extensión no es suficiente para determinarlo
   function detectVideoType(url) {
+    if (url.includes('pixeldrain.com')) return Promise.resolve('iframe');
+
     // Si la URL ya tiene extensión reconocible, no hace falta fetch
-    if (/\.(mp4|webm|ogg)(\?.*)?$/i.test(url)) return Promise.resolve('mp4');
-    if (/\.m3u8(\?.*)?$/i.test(url)) return Promise.resolve('hls');
+    if (/\.(mp4|webm|ogg)(?:[\/\?&]|$)/i.test(url)) return Promise.resolve('mp4');
+    if (/\.m3u8(?:[\/\?&]|$)/i.test(url)) return Promise.resolve('hls');
 
     // Solo tratar como iframe directamente si tiene palabras clave MUY específicas de embeds
     // y no parece tener una extensión de video
@@ -68,15 +72,19 @@
     }
 
     // Intentar HEAD request directo (sin proxy) para ver Content-Type
-    return fetch(url, { method: 'HEAD', mode: 'no-cors' })
+    const referPolicy = url.includes('pixeldrain.com') ? 'no-referrer' : 'strict-origin-when-cross-origin';
+    return fetch(url, { method: 'HEAD', mode: 'no-cors', referrerPolicy: referPolicy })
       .then(() => {
         return proxyFetch(url, 5000)
           .then(data => {
             const ct = (data.content_type || '').toLowerCase();
             if (ct.includes('mpegurl') || ct.includes('x-mpegurl') || ct.includes('m3u8')) return 'hls';
-            if (ct.includes('mp4') || ct.includes('video/') || ct.includes('octet-stream')) return 'mp4';
-            const body = (data.contents || '').trimStart();
-            if (body.startsWith('#EXTM3U')) return 'hls';
+            if (ct.includes('mp4') || ct.includes('video/') || ct.includes('octet-stream')) {
+                const body = (data.contents || '').trimStart();
+                if (body.startsWith('#EXTM3U')) return 'hls';
+                if (body.toLowerCase().startsWith('<html') || body.toLowerCase().startsWith('<!doctype')) return 'iframe';
+                return 'mp4';
+            }
             return 'iframe';
           });
       })
@@ -161,8 +169,8 @@
       /["']?(?:file|src|source|hls|stream|video)["']?\s*:\s*["'`](https?:\/\/[^"'`\s,}]{10,})/i,
       // file/src/source con =
       /(?:file|src|source)\s*=\s*["'`](https?:\/\/[^"'`\s]{10,})/i,
-      // URL directa con extensión de video pero al final
-      /(https?:\/\/[^\s"'`<>]{10,}\.(?:m3u8|mp4|webm|ogg)(?:\?[^\s"'`<>]*)?$)/i,
+      // URL directa con extensión de video
+      /(https?:\/\/[^\s"'`<>]{10,}\.(?:m3u8|mp4|webm|ogg)(?:\?[^\s"'`<>]*)?)/i,
     ];
     for (const re of patterns) {
       const m = code.match(re);
@@ -214,6 +222,7 @@
   let activeServer = 0;
   let hlsInstance  = null;
   let hideTimer    = null;
+  let renderCount    = 0;
 
   // ── Progreso / continuar viendo ───────────────────────────
   // La clave ahora solo incluye serie, temporada, episodio y idioma
@@ -342,15 +351,17 @@
   // ── Reproductor con Wolf Player ──────────────────────────────
   let wolfInstance = null;
 
-  function buildVideoPlayer(wrap, url, poster, videoType, mainLoader, server) {
+  function buildVideoPlayer(wrap, url, poster, videoType, mainLoader, server, requestId) {
+    if (requestId && requestId !== renderCount) return;
+
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
     if (wolfInstance) {
       if (typeof wolfInstance.destroy === 'function') wolfInstance.destroy();
       wolfInstance = null;
     }
-    Array.from(wrap.children).forEach(c => {
-      if (!c.classList.contains('vp-loading')) c.remove();
-    });
+    
+    // Limpiar TODO el wrap para evitar acumulaciones
+    wrap.innerHTML = '';
 
     // Detener cualquier video que esté reproduciéndose antes de cargar el nuevo
     const prevVideo = document.querySelector('#wolf-player-container video');
@@ -421,15 +432,22 @@
       setTimeout(() => {
         const v = container.querySelector('video');
         if (v) {
+          // Solución para hotlinking de PixelDrain
+          if (url.includes('pixeldrain.com')) {
+            v.setAttribute('referrerpolicy', 'no-referrer');
+            console.log('🛡️ PixelDrain: Referrer policy set to no-referrer');
+          }
+
           v.addEventListener('error', (e) => {
             console.error('❌ Error en video:', e);
             
-            // FALLBACK: Si falla el video directo, intentar iframe del servidor original
-            if (server && server.url && url !== server.url) {
-                console.warn('⚠️ Fallback a iframe del servidor original...');
+            // FALLBACK: Si falla el video directo, intentar iframe
+            if (server && server.url) {
+                const fallbackUrl = (url !== server.url) ? server.url : url;
+                console.warn('⚠️ Fallback a iframe:', fallbackUrl);
                 wrap.innerHTML = '';
                 const newLoader = createLoadingOverlay(wrap);
-                loadIframe(wrap, server.url, server, newLoader);
+                loadIframe(wrap, fallbackUrl, server, newLoader);
                 return;
             }
 
@@ -691,7 +709,12 @@
     castBtn.onclick = () => { window.location.href = castBtn._castUrl; };
   }
 
-  function loadIframe(wrap, url, server, loader) {
+  function loadIframe(wrap, url, server, loader, requestId) {
+    if (requestId && requestId !== renderCount) return;
+
+    window.EPISODE.isEmbed = true;
+    wrap.innerHTML = '';
+
     const f = document.createElement('iframe');
     f.id = 'player-frame';
     f.src = url;
@@ -747,6 +770,7 @@
   function renderPlayer(animate) {
     const ep   = window.EPISODE;
     const wrap = $('player-wrap');
+    const myCount = ++renderCount;
 
     // Resetear la bandera del toast al renderizar un nuevo player
     resumeToastShown = false;
@@ -767,7 +791,9 @@
       const server = ep.langs[activeLang].servers[activeServer];
 
       resolveUrl(server).then(resolved => {
-        const url    = typeof resolved === 'object' ? resolved.url    : resolved;
+        if (myCount !== renderCount) return;
+
+        let url    = typeof resolved === 'object' ? resolved.url    : resolved;
         const poster = typeof resolved === 'object' ? resolved.poster : (ep.poster || '');
 
         updateCast(url);
@@ -782,17 +808,18 @@
         }
 
         if (isDirectVideo(url)) {
-          buildVideoPlayer(wrap, url, poster, isHLS(url) ? 'hls' : 'mp4', loader, server);
+          buildVideoPlayer(wrap, url, poster, isHLS(url) ? 'hls' : 'mp4', loader, server, myCount);
         } else if (/^https?:\/\//i.test(url)) {
           detectVideoType(url).then(videoType => {
+            if (myCount !== renderCount) return;
             if (videoType === 'hls' || videoType === 'mp4') {
-              buildVideoPlayer(wrap, url, poster, videoType, loader, server);
+              buildVideoPlayer(wrap, url, poster, videoType, loader, server, myCount);
             } else {
-              loadIframe(wrap, url, server, loader);
+              loadIframe(wrap, server.url, server, loader, myCount);
             }
           });
         } else {
-          loadIframe(wrap, url, server, loader);
+          loadIframe(wrap, server.url, server, loader, myCount);
         }
 
         requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('loaded')));
