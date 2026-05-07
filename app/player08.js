@@ -329,13 +329,17 @@
             if (resumeChecked) return;
             
             const saved = getSavedTime();
-            if (!saved || saved <= 0) return;
-            
-            // Esperar un momento para que el video se inicialice
-            setTimeout(() => {
-              if (resumeChecked) return;
+            if (!saved || saved <= 0) {
               resumeChecked = true;
+              return;
+            }
+            
+            // Verificar inmediatamente cuando el video tenga duración
+            const tryShow = () => {
+              if (resumeChecked) return;
+              if (!v.duration || v.duration <= 0) return;
               
+              resumeChecked = true;
               const currentTime = v.currentTime || 0;
               
               // Solo mostrar si:
@@ -346,10 +350,17 @@
               const isNearStart = currentTime < 60 || Math.abs(currentTime - saved) > 60;
               const notNearEnd = saved < v.duration * 0.95;
               
-              if (v.duration > 0 && hasSignificantProgress && isNearStart && notNearEnd) {
-                showResumeToast(saved, () => { v.currentTime = saved; }, () => {});
+              if (hasSignificantProgress && isNearStart && notNearEnd) {
+                showResumeToast(saved, () => { v.currentTime = saved; v.play(); }, () => { v.play(); });
               }
-            }, 500);
+            };
+            
+            // Intentar mostrar inmediatamente
+            tryShow();
+            // Si no funcionó, intentar después de un momento
+            if (!resumeChecked) {
+              setTimeout(tryShow, 300);
+            }
           };
 
           const doSave = () => {
