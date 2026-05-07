@@ -62,38 +62,61 @@
         let code = data.contents || '';
         if (!code) return url;
 
-        // Intentar extraer directamente del HTML sin desofuscar
-        const direct = extractVideoUrl(code);
-        if (direct) return direct;
+        // Capa 1: extraer directo del HTML crudo
+        let found = extractVideoUrl(code);
+        if (found) { console.log('✅ URL extraída directo:', found); return found; }
 
-        // Intentar desofuscar y extraer
-        for (let i = 0; i < 10; i++) {
-          const decoded = tryUnpack(code);
-          if (!decoded || decoded === code) break;
-          code = decoded;
-          const found = extractVideoUrl(code);
-          if (found) return found;
+        // Capa 2: buscar bloques <script> y extraer de cada uno
+        const scripts = [...code.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
+        for (const s of scripts) {
+          found = extractVideoUrl(s[1]);
+          if (found) { console.log('✅ URL extraída de script:', found); return found; }
         }
 
+        // Capa 3: desofuscar iterativamente y buscar en cada capa
+        let current = code;
+        for (let i = 0; i < 15; i++) {
+          const decoded = tryUnpack(current);
+          if (!decoded || decoded === current) break;
+          current = decoded;
+          found = extractVideoUrl(current);
+          if (found) { console.log('✅ URL extraída tras desofuscar capa', i+1, ':', found); return found; }
+        }
+
+        // Capa 4: buscar en scripts desofuscados
+        for (const s of scripts) {
+          let scriptCode = s[1];
+          for (let i = 0; i < 10; i++) {
+            const decoded = tryUnpack(scriptCode);
+            if (!decoded || decoded === scriptCode) break;
+            scriptCode = decoded;
+            found = extractVideoUrl(scriptCode);
+            if (found) { console.log('✅ URL extraída de script desofuscado:', found); return found; }
+          }
+        }
+
+        console.warn('⚠️ No se encontró URL de video en:', url);
         return url;
       })
-      .catch(() => url);
+      .catch(e => { console.error('❌ Error al resolver URL:', e); return url; });
   }
 
   function extractVideoUrl(code) {
+    if (!code) return null;
     const patterns = [
-      // jkanime: url: 'https://...'
-      /\burl\s*:\s*['"`](https?:\/\/[^'"`\s,}]+\.m3u8[^'"`\s]*)/i,
-      /\burl\s*:\s*['"`](https?:\/\/[^'"`\s,}]+\.mp4[^'"`\s]*)/i,
-      // file/src/source/hls con : o =
-      /["']?(?:file|src|source|hls|stream|video)["']?\s*:\s*["'`](https?:\/\/[^"'`\s,}]+)/i,
-      /(?:file|src|source)\s*=\s*["'`](https?:\/\/[^"'`\s]+)/i,
+      // jkanime y similares: url: 'https://...m3u8...'
+      /\burl\s*:\s*['"`](https?:\/\/[^'"`\s,}]{10,}\.m3u8[^'"`\s]*)/i,
+      /\burl\s*:\s*['"`](https?:\/\/[^'"`\s,}]{10,}\.mp4[^'"`\s]*)/i,
+      // file/src/source/hls con :
+      /["']?(?:file|src|source|hls|stream|video)["']?\s*:\s*["'`](https?:\/\/[^"'`\s,}]{10,})/i,
+      // file/src/source con =
+      /(?:file|src|source)\s*=\s*["'`](https?:\/\/[^"'`\s]{10,})/i,
       // URL directa con extensión de video
-      /(https?:\/\/[^\s"'`]+\.(?:m3u8|mp4|webm|ogg)(?:\?[^\s"'`]*)?)/i,
+      /(https?:\/\/[^\s"'`<>]{10,}\.(?:m3u8|mp4|webm|ogg)(?:\?[^\s"'`<>]*)?)/i,
     ];
     for (const re of patterns) {
       const m = code.match(re);
-      if (m) return m[1];
+      if (m && m[1]) return m[1];
     }
     return null;
   }
