@@ -145,13 +145,16 @@
       localStorage.removeItem(key);
       return;
     }
-    localStorage.setItem(key, String(Math.floor(currentTime)));
+    const time = Math.floor(currentTime);
+    localStorage.setItem(key, String(time));
+    console.log('💾 Progreso guardado:', key, '→', time + 's');
   }
 
   function getSavedTime() {
     const key = resumeKey();
     if (!key) return 0;
     const t = parseInt(localStorage.getItem(key) || '0', 10);
+    console.log('📖 Progreso leído:', key, '→', t + 's');
     return t > 5 ? t : 0;
   }
 
