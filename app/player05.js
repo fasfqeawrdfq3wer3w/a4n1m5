@@ -324,22 +324,29 @@
 
           const checkResume = () => {
             if (resumeChecked) return;
-            resumeChecked = true;
+            
             const saved = getSavedTime();
-            const currentTime = v.currentTime || 0;
+            if (!saved || saved <= 0) return;
             
-            // Solo mostrar si:
-            // 1. Hay tiempo guardado significativo (más de 2 minutos o 5% del video)
-            // 2. El usuario está al inicio (menos de 30 segundos)
-            // 3. El tiempo guardado no está cerca del final (menos del 95%)
-            const minProgress = Math.max(120, v.duration * 0.05); // 2 minutos o 5%
-            const isAtStart = currentTime < 30;
-            const hasSignificantProgress = saved > minProgress;
-            const notNearEnd = saved < v.duration * 0.95;
-            
-            if (saved > 0 && v.duration > 0 && isAtStart && hasSignificantProgress && notNearEnd) {
-              showResumeToast(saved, () => { v.currentTime = saved; }, () => {});
-            }
+            // Esperar un momento para que el video se inicialice
+            setTimeout(() => {
+              if (resumeChecked) return;
+              resumeChecked = true;
+              
+              const currentTime = v.currentTime || 0;
+              
+              // Solo mostrar si:
+              // 1. Hay tiempo guardado significativo (más de 30 segundos)
+              // 2. El usuario está cerca del inicio (menos de 1 minuto o muy lejos del guardado)
+              // 3. El tiempo guardado no está cerca del final (menos del 95%)
+              const hasSignificantProgress = saved > 30;
+              const isNearStart = currentTime < 60 || Math.abs(currentTime - saved) > 60;
+              const notNearEnd = saved < v.duration * 0.95;
+              
+              if (v.duration > 0 && hasSignificantProgress && isNearStart && notNearEnd) {
+                showResumeToast(saved, () => { v.currentTime = saved; }, () => {});
+              }
+            }, 500);
           };
 
           const doSave = () => {
