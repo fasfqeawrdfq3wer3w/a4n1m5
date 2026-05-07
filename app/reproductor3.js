@@ -781,10 +781,19 @@
         let url    = typeof resolved === 'object' ? resolved.url    : resolved;
         const poster = typeof resolved === 'object' ? resolved.poster : (ep.poster || '');
 
-        // Transformation: pixeldrain.com/u/ID -> pixeldrain.com/api/file/ID
+        // Transformation: pixeldrain.com/u/ID -> pixeldrain.com/api/file/ID + Proxy to bypass hotlink
         if (url && url.includes('pixeldrain.com/u/')) {
             url = url.replace('pixeldrain.com/u/', 'pixeldrain.com/api/file/');
-            console.log('🔄 PixelDrain transformado:', url);
+        }
+        if (url && url.includes('pixeldrain.com/api/file/')) {
+            // Usar proxy personalizado si existe, si no corsproxy.io
+            const customProxy = window.EPISODE && window.EPISODE.proxyUrl;
+            if (customProxy) {
+                url = customProxy.replace(/\/?$/, '/') + '?url=' + encodeURIComponent(url);
+            } else {
+                url = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+            }
+            console.log('🛡️ PixelDrain (Proxy):', url);
         }
 
         updateCast(url);
