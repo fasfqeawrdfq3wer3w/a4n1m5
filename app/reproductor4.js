@@ -814,11 +814,11 @@
             if (videoType === 'hls' || videoType === 'mp4') {
               buildVideoPlayer(wrap, url, poster, videoType, loader, server);
             } else {
-              loadIframe(wrap, url, server, loader);
+              loadIframe(wrap, server.url, server, loader);
             }
           });
         } else {
-          loadIframe(wrap, url, server, loader);
+          loadIframe(wrap, server.url, server, loader);
         }
 
         requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('loaded')));
