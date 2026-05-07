@@ -68,7 +68,8 @@
     }
 
     // Intentar HEAD request directo (sin proxy) para ver Content-Type
-    return fetch(url, { method: 'HEAD', mode: 'no-cors' })
+    const referPolicy = url.includes('pixeldrain.com') ? 'no-referrer' : 'strict-origin-when-cross-origin';
+    return fetch(url, { method: 'HEAD', mode: 'no-cors', referrerPolicy: referPolicy })
       .then(() => {
         return proxyFetch(url, 5000)
           .then(data => {
@@ -424,6 +425,12 @@
       setTimeout(() => {
         const v = container.querySelector('video');
         if (v) {
+          // Solución para hotlinking de PixelDrain
+          if (url.includes('pixeldrain.com')) {
+            v.setAttribute('referrerpolicy', 'no-referrer');
+            console.log('🛡️ PixelDrain: Referrer policy set to no-referrer');
+          }
+
           v.addEventListener('error', (e) => {
             console.error('❌ Error en video:', e);
             
