@@ -266,18 +266,46 @@
 
     // Verificar si Wolf Player está disponible
     if (typeof window.WolfPlayer !== 'undefined') {
-      // Usar Wolf Player
-      wolfInstance = new window.WolfPlayer('#wolf-player-container', {
+      // Configuración optimizada de buffer para Wolf Player
+      const wolfConfig = {
         src: url,
         poster: poster || '',
         autoplay: false,
         color: '#00E676',
         volume: 0.8
-      });
+      };
+
+      // Si es HLS, agregar configuración de buffer optimizada
+      if (videoType === 'hls' || isHLS(url)) {
+        wolfConfig.hlsConfig = {
+          maxBufferLength: isMobile ? 20 : 60,
+          maxMaxBufferLength: isMobile ? 40 : 120,
+          maxBufferSize: isMobile ? 40 * 1000 * 1000 : 80 * 1000 * 1000,
+          maxBufferHole: 0.5,
+          highBufferWatchdogPeriod: 2,
+          nudgeOffset: 0.1,
+          nudgeMaxRetry: 3,
+          startLevel: isMobile ? 0 : -1,
+          capLevelToPlayerSize: true,
+          autoStartLoad: true,
+          enableWorker: true,
+          lowLatencyMode: false,
+          backBufferLength: isMobile ? 15 : 40,
+          progressive: true,
+          abrEwmaDefaultEstimate: isMobile ? 500000 : 1500000,
+          abrBandWidthFactor: 0.95,
+          abrBandWidthUpFactor: 0.7,
+          liveSyncDurationCount: 3,
+          liveMaxLatencyDurationCount: 10
+        };
+      }
+
+      // Usar Wolf Player
+      wolfInstance = new window.WolfPlayer('#wolf-player-container', wolfConfig);
 
       setTimeout(hideLoader, 2000);
 
-      // Acceder al elemento de video interno para guardar progreso
+      // Acceder al elemento de video interno para guardar progreso y omitir intro
       setTimeout(() => {
         const v = container.querySelector('video');
         if (v) {
@@ -296,25 +324,36 @@
             localStorage.removeItem(resumeKey()); 
           });
 
-          // Botón saltar intro
+          // Botón saltar intro para Wolf Player
           const introEnd = ep.introEnd;
           if (introEnd > 0) {
             const skipBtn = document.createElement('button');
             skipBtn.id = 'vp-skip-intro';
             skipBtn.textContent = 'Omitir intro';
-            skipBtn.style.cssText = 'position:absolute;bottom:80px;right:20px;padding:8px 16px;background:rgba(0,230,118,0.9);color:#000;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer;opacity:0;transition:opacity 0.3s;z-index:100;pointer-events:auto';
-            wrap.appendChild(skipBtn);
+            skipBtn.style.cssText = 'position:absolute;bottom:80px;right:20px;padding:8px 16px;background:rgba(0,230,118,0.9);color:#000;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer;opacity:0;transition:opacity 0.3s;z-index:9999;pointer-events:auto';
+            container.appendChild(skipBtn);
 
-            skipBtn.addEventListener('click', () => {
+            skipBtn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
               v.currentTime = introEnd;
               skipBtn.style.opacity = '0';
+              skipBtn.style.pointerEvents = 'none';
             });
-            v.addEventListener('play', () => {
-              if (v.currentTime < introEnd) skipBtn.style.opacity = '1';
-            });
-            v.addEventListener('timeupdate', () => {
-              if (v.currentTime >= introEnd) skipBtn.style.opacity = '0';
-            });
+
+            const checkIntro = () => {
+              if (v.currentTime < introEnd && !v.paused) {
+                skipBtn.style.opacity = '1';
+                skipBtn.style.pointerEvents = 'auto';
+              } else {
+                skipBtn.style.opacity = '0';
+                skipBtn.style.pointerEvents = 'none';
+              }
+            };
+
+            v.addEventListener('play', checkIntro);
+            v.addEventListener('timeupdate', checkIntro);
+            v.addEventListener('seeked', checkIntro);
           }
         }
       }, 1000);
@@ -337,20 +376,32 @@
           // Safari nativo soporta HLS
           video.src = url;
         } else if (typeof window.Hls !== 'undefined' && window.Hls.isSupported()) {
-          // Usar HLS.js para otros navegadores
+          // Usar HLS.js para otros navegadores con buffer optimizado
           const hls = new window.Hls({
-            maxBufferLength: isMobile ? 8 : 30,
-            maxMaxBufferLength: isMobile ? 16 : 60,
+            maxBufferLength: isMobile ? 15 : 45,
+            maxMaxBufferLength: isMobile ? 30 : 90,
+            maxBufferSize: isMobile ? 30 * 1000 * 1000 : 60 * 1000 * 1000,
+            maxBufferHole: 0.5,
+            highBufferWatchdogPeriod: 2,
+            nudgeOffset: 0.1,
+            nudgeMaxRetry: 3,
             startLevel: isMobile ? 0 : -1,
             capLevelToPlayerSize: true,
-            autoStartLoad: !isMobile
+            autoStartLoad: true,
+            startPosition: -1,
+            debug: false,
+            enableWorker: true,
+            lowLatencyMode: false,
+            backBufferLength: isMobile ? 10 : 30,
+            liveSyncDurationCount: 3,
+            liveMaxLatencyDurationCount: 10,
+            progressive: true,
+            abrEwmaDefaultEstimate: isMobile ? 500000 : 1000000,
+            abrBandWidthFactor: 0.95,
+            abrBandWidthUpFactor: 0.7
           });
           hls.loadSource(url);
           hls.attachMedia(video);
-          
-          if (isMobile) {
-            video.addEventListener('play', () => hls.startLoad(), { once: true });
-          }
           
           hls.on(window.Hls.Events.ERROR, (_, data) => {
             if (data.fatal) {
@@ -376,7 +427,7 @@
       video.addEventListener('canplay', () => hideLoader(), { once: true });
       setTimeout(() => hideLoader(), 10000);
       
-      // Guardar progreso
+      // Guardar progreso SOLO en reproductor HTML5 nativo (no Wolf Player)
       let saveInterval = null;
       video.addEventListener('loadedmetadata', () => {
         const saved = getSavedTime();
