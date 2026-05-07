@@ -7,8 +7,12 @@
   const DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
   // Lista de proxies CORS en orden de prioridad
+  // El primero viene de window.EPISODE.proxyUrl (configurable en player.html)
   const CORS_PROXIES = [
-    url => `https://calm-water-d0e3.yt-thesthipoficial.workers.dev/?url=${encodeURIComponent(url)}`,
+    url => {
+      const base = (window.EPISODE && window.EPISODE.proxyUrl) || 'https://calm-water-d0e3.yt-thesthipoficial.workers.dev/';
+      return base + '?url=' + encodeURIComponent(url);
+    },
     url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&user_agent=${encodeURIComponent(DESKTOP_UA)}`,
     url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
   ];
