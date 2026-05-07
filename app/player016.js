@@ -10,8 +10,9 @@
   // El primero viene de window.EPISODE.proxyUrl (configurable en player.html)
   const CORS_PROXIES = [
     url => {
-      const base = (window.EPISODE && window.EPISODE.proxyUrl) || 'https://calm-water-d0e3.yt-thesthipoficial.workers.dev/';
-      return base + '?url=' + encodeURIComponent(url);
+      const base = window.EPISODE && window.EPISODE.proxyUrl;
+      if (!base) return null; // Sin proxyUrl, saltar al siguiente
+      return base.replace(/\/?$/, '/') + '?url=' + encodeURIComponent(url);
     },
     url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&user_agent=${encodeURIComponent(DESKTOP_UA)}`,
     url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
@@ -24,6 +25,10 @@
     const tryProxy = (idx) => {
       if (idx >= CORS_PROXIES.length) return Promise.reject(new Error('Todos los proxies fallaron'));
       const proxyUrl = CORS_PROXIES[idx](url);
+      if (!proxyUrl) {
+        console.warn(`⚠️ Proxy ${idx+1} omitido (sin URL) → siguiente...`);
+        return tryProxy(idx + 1);
+      }
       return fetch(proxyUrl, opts)
         .then(r => {
           if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -337,10 +342,14 @@
 
   function buildVideoPlayer(wrap, url, poster, videoType) {
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
-    if (wolfInstance)  { wolfInstance = null; }
+    if (wolfInstance) { wolfInstance = null; }
     Array.from(wrap.children).forEach(c => {
       if (!c.classList.contains('vp-loading')) c.remove();
     });
+
+    // Detener cualquier video que esté reproduciéndose antes de cargar el nuevo
+    const prevVideo = document.querySelector('#wolf-player-container video');
+    if (prevVideo) { prevVideo.pause(); prevVideo.src = ''; }
 
     const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
     const ep = window.EPISODE || {};
