@@ -81,3 +81,34 @@
 .cat-card-icon{background:rgba(255,255,255,0.08)!important;backdrop-filter:blur(8px)}
 .cat-card-info h3{color:var(--text)!important}
 .cat-card-info span{color:var(--text3)!important}
+
+/* ── Ocultar X nativa del input search ── */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration{-webkit-appearance:none;appearance:none}
+input[type="text"]::-ms-clear{display:none}
+
+/* ── Estilos para Contenido H ── */
+.card.card-h {
+  background: #1a0a2e;
+  border-color: rgba(155,48,255,0.25);
+}
+.card.card-h .card-title {
+  color: #d4a8ff;
+}
+.card.card-h .meta-item svg {
+  color: #c084fc;
+}
+
+.detail-h-badge {
+  background: rgba(106,13,173,0.3);
+  color: #c084fc;
+  border: 1px solid rgba(155,48,255,0.4);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
