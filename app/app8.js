@@ -89,6 +89,7 @@
   let favs = JSON.parse(localStorage.getItem(FAVS_KEY) || '[]');
   // watchStatus: { [id]: 'Viendo' | 'Completado' | 'Pendiente' }
   let watchStatus = JSON.parse(localStorage.getItem(WATCH_STATUS_KEY) || '{}');
+  const APP_STATE_KEY = 'wolfanime_last_state';
   let state = { view: 'home', prev: null, detail: null, catFilter: null, searchQ: '', favFilter: 'all' };
 
   const saveWatchStatus = () => localStorage.setItem(WATCH_STATUS_KEY, JSON.stringify(watchStatus));
@@ -128,10 +129,22 @@
 
     const newUrl = params.toString() ? `${url.pathname}?${params.toString()}` : url.pathname;
     window.history.replaceState({}, '', newUrl);
+
+    // Save to localStorage too
+    localStorage.setItem(APP_STATE_KEY, JSON.stringify(newParams));
   }
 
   function handleURLParams() {
-    const p = getURLParams();
+    let p = getURLParams();
+
+    // If no URL params, try localStorage
+    if (Object.keys(p).length === 0) {
+      const saved = localStorage.getItem(APP_STATE_KEY);
+      if (saved) {
+        try { p = JSON.parse(saved); } catch (e) { }
+      }
+    }
+
     if (p.id) {
       openDetail(+p.id);
       return true;
