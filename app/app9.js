@@ -90,7 +90,7 @@
   // watchStatus: { [id]: 'Viendo' | 'Completado' | 'Pendiente' }
   let watchStatus = JSON.parse(localStorage.getItem(WATCH_STATUS_KEY) || '{}');
   const APP_STATE_KEY = 'wolfanime_last_state';
-  let state = { view: 'home', prev: null, detail: null, catFilter: null, searchQ: '', favFilter: 'all' };
+  let state = { view: null, prev: null, detail: null, catFilter: null, searchQ: '', favFilter: 'all' };
 
   const saveWatchStatus = () => localStorage.setItem(WATCH_STATUS_KEY, JSON.stringify(watchStatus));
   const getWatchStatus = id => watchStatus[id] || null;
@@ -764,21 +764,22 @@
   }
 
   function navigateTo(view, back = false) {
-    const prev = state.view;
     const views = document.querySelectorAll('.view');
-    const current = document.getElementById('view-' + prev);
+    const current = state.view ? document.getElementById('view-' + state.view) : null;
     const next = document.getElementById('view-' + view);
-    if (!next || prev === view) return;
+    if (!next || (state.view === view && next.classList.contains('active'))) return;
 
-    if (back) {
-      current.classList.remove('active');
-      current.classList.add('slide-left');
-      setTimeout(() => { current.classList.remove('slide-left'); }, 300);
-    } else {
-      current.classList.remove('active');
+    if (current) {
+      if (back) {
+        current.classList.remove('active');
+        current.classList.add('slide-left');
+        setTimeout(() => { current.classList.remove('slide-left'); }, 300);
+      } else {
+        current.classList.remove('active');
+      }
     }
 
-    state.prev = prev;
+    state.prev = state.view;
     state.view = view;
     next.classList.add('active');
     next.scrollTop = 0;
@@ -1124,7 +1125,7 @@
 
     // Default view if no params handle it
     if (!handleURLParams()) {
-      document.getElementById('view-home').classList.add('active');
+      navigateTo('home');
     }
 
     document.getElementById('cat-library-back').addEventListener('click', () => navigateTo('categories', true));
