@@ -112,6 +112,49 @@
     return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
   }
 
+  function getURLParams() {
+    const params = new URLSearchParams(window.location.search);
+    return Object.fromEntries(params.entries());
+  }
+
+  function updateURL(newParams = {}) {
+    const url = new URL(window.location.href);
+    const params = new URLSearchParams();
+
+    // Preserve some persistent state if needed, or just clear and set new ones
+    Object.entries(newParams).forEach(([k, v]) => {
+      if (v !== null && v !== undefined && v !== '') params.set(k, v);
+    });
+
+    const newUrl = params.toString() ? `${url.pathname}?${params.toString()}` : url.pathname;
+    window.history.replaceState({}, '', newUrl);
+  }
+
+  function handleURLParams() {
+    const p = getURLParams();
+    if (p.id) {
+      openDetail(+p.id);
+      return true;
+    }
+    if (p.cat) {
+      state.catFilter = p.cat;
+      renderCatLibrary(p.cat);
+      navigateTo('cat-library');
+      return true;
+    }
+    if (p.q) {
+      if ($('search-input')) $('search-input').value = p.q;
+      renderSearch(p.q, p.cat || null);
+      navigateTo('search');
+      return true;
+    }
+    if (p.view) {
+      navigateTo(p.view);
+      return true;
+    }
+    return false;
+  }
+
   const CATS_CFG = window.CATEGORIES_CONFIG || [];
   const CATEGORIES = CATS_CFG.filter(c => !c.isH).map(c => c.name);
   const CAT_COLORS = Object.fromEntries(CATS_CFG.map(c => [c.name, c.color]));
@@ -744,6 +787,13 @@
     if (view === 'categories') renderCategories();
     if (view === 'favorites') renderFavorites();
     if (view === 'profile') renderProfile();
+
+    // Update URL
+    const params = { view: view };
+    if (view === 'search' && $('search-input')?.value) params.q = $('search-input').value;
+    if (view === 'cat-library') params.cat = state.catFilter;
+    if (view === 'detail' && state.detail) params.id = state.detail.id;
+    updateURL(params);
   }
 
   function openDetail(id) {
@@ -1037,11 +1087,17 @@
     const q = e.target.value;
     searchClearEl.classList.toggle('visible', q.length > 0);
     renderSearch(q, state.catFilter);
+    if (state.view === 'search') {
+      updateURL({ view: 'search', q: q, cat: state.catFilter });
+    }
   }, 300));
   searchClearEl.addEventListener('click', () => {
     searchInputEl.value = '';
     searchClearEl.classList.remove('visible');
     renderSearch('', state.catFilter);
+    if (state.view === 'search') {
+      updateURL({ view: 'search', q: '', cat: state.catFilter });
+    }
     searchInputEl.focus();
   });
 
@@ -1052,7 +1108,12 @@
     renderCategories();
     renderFavorites();
     renderProfile();
-    document.getElementById('view-home').classList.add('active');
+
+    // Default view if no params handle it
+    if (!handleURLParams()) {
+      document.getElementById('view-home').classList.add('active');
+    }
+
     document.getElementById('cat-library-back').addEventListener('click', () => navigateTo('categories', true));
     document.getElementById('all-library-back').addEventListener('click', () => navigateTo('home', true));
 
