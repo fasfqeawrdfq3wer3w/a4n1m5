@@ -45,6 +45,7 @@
 
   function isDirectVideo(url) {
     if (url.includes('pixeldrain.com')) return false;
+
     // Restaurar flexibilidad para capturar m3u8/mp4 en cualquier parte del path
     // El fallback automático en buildVideoPlayer se encargará si falla
     return /\.(mp4|webm|ogg|m3u8)(\?.*)?$/i.test(url) ||
@@ -95,7 +96,14 @@
   function resolveUrl(server) {
     const url = server.url;
     if (!url) return Promise.resolve('');
-    if (!server.deobfuscate) return Promise.resolve(url);
+    
+    // Si no tiene el flag, pero es un host conocido que suele estar ofuscado, intentarlo de todas formas
+    const isKnownObfuscated = 
+        url.includes('jkanime.net') || 
+        url.includes('playmudos.com') || 
+        url.includes('streamani.me');
+
+    if (!server.deobfuscate && !isKnownObfuscated) return Promise.resolve(url);
 
     console.group('🔍 resolveUrl:', url);
     console.log('⏳ Fetching via proxy...');
@@ -163,14 +171,13 @@
     if (!code) return null;
     const patterns = [
       // jkanime y similares: url: 'https://...m3u8...'
-      /\burl\s*:\s*['"`](https?:\/\/[^'"`\s,}]{10,}\.m3u8[^'"`\s]*)/i,
-      /\burl\s*:\s*['"`](https?:\/\/[^'"`\s,}]{10,}\.mp4[^'"`\s]*)/i,
-      // file/src/source/hls con :
-      /["']?(?:file|src|source|hls|stream|video)["']?\s*:\s*["'`](https?:\/\/[^"'`\s,}]{10,})/i,
-      // file/src/source con =
-      /(?:file|src|source)\s*=\s*["'`](https?:\/\/[^"'`\s]{10,})/i,
-      // URL directa con extensión de video
+      /\b(?:url|file|src|source|link|video)\s*:\s*['"`](https?:\/\/[^'"`\s,}]{10,}\.(?:m3u8|mp4|webm|ogg)[^'"`\s]*)/i,
+      // file/src/source/hls con : o =
+      /["']?(?:file|src|source|hls|stream|video|link)["']?\s*[=:]\s*["'`](https?:\/\/[^"'`\s,}]{10,})/i,
+      // URL directa con extensión de video (captura m3u8 o mp4 en cualquier parte)
       /(https?:\/\/[^\s"'`<>]{10,}\.(?:m3u8|mp4|webm|ogg)(?:\?[^\s"'`<>]*)?)/i,
+      // Atributos data-src o similares
+      /data-(?:src|url|video)=["'](https?:\/\/[^"']{10,})["']/i,
     ];
     for (const re of patterns) {
       const m = code.match(re);
