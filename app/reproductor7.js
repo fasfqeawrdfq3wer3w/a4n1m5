@@ -108,12 +108,12 @@
     console.group('🔍 resolveUrl:', url);
     console.log('⏳ Fetching via proxy...');
 
-    // Timeout agresivo: si tarda más de 5s, mostrar iframe directamente
+    // Timeout agresivo: si tarda más de 10s, mostrar iframe directamente
     const timeout = new Promise(resolve => setTimeout(() => {
       console.warn('⏱️ Timeout — mostrando iframe directamente');
       console.groupEnd();
       resolve(url);
-    }, 5000));
+    }, 10000));
 
     const extract = proxyFetch(url)
       .then(data => {
@@ -170,14 +170,15 @@
   function extractVideoUrl(code) {
     if (!code) return null;
     const patterns = [
-      // jkanime y similares: url: 'https://...m3u8...'
-      /\b(?:url|file|src|source|link|video)\s*:\s*['"`](https?:\/\/[^'"`\s,}]{10,}\.(?:m3u8|mp4|webm|ogg)[^'"`\s]*)/i,
-      // file/src/source/hls con : o =
-      /["']?(?:file|src|source|hls|stream|video|link)["']?\s*[=:]\s*["'`](https?:\/\/[^"'`\s,}]{10,})/i,
-      // URL directa con extensión de video (captura m3u8 o mp4 en cualquier parte)
+      // 1. Patrones con extensión de video explícita (MÁS SEGUROS)
+      /\b(?:url|file|src|source|link|video)\s*[:=]\s*['"`](https?:\/\/[^'"`\s,}]{10,}\.(?:m3u8|mp4|webm|ogg)[^'"`\s]*)/i,
       /(https?:\/\/[^\s"'`<>]{10,}\.(?:m3u8|mp4|webm|ogg)(?:\?[^\s"'`<>]*)?)/i,
-      // Atributos data-src o similares
-      /data-(?:src|url|video)=["'](https?:\/\/[^"']{10,})["']/i,
+
+      // 2. Patrones genéricos pero EXCLUYENDO extensiones de assets comunes (.js, .css, .jpg, etc)
+      /["']?(?:file|src|source|hls|stream|video|link)["']?\s*[=:]\s*["'`](https?:\/\/[^"'` \s,}]{10,}(?!\.(?:js|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|otf|map|json)(?:\?|$))[^"'` \s,}]*)/i,
+
+      // 3. Atributos data-src o similares (con check de video)
+      /data-(?:src|url|video)=["'](https?:\/\/[^"']{10,}\.(?:m3u8|mp4|webm|ogg)[^"']*)["']/i,
     ];
     for (const re of patterns) {
       const m = code.match(re);
