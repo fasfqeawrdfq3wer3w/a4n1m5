@@ -219,10 +219,10 @@
       div.innerHTML = `<div class="slider-poster">
       <div class="slider-poster-bg" style="background:${posterBg(item)}"></div>
       <div class="slider-poster-overlay"></div>
+      <span class="slider-poster-eps">${item.episodes} eps</span>
       <div class="slider-poster-info">
         <div class="slider-poster-title">${item.title}</div>
         <div class="slider-poster-meta">
-          <span class="slider-poster-eps">${item.episodes} eps</span>
           <span class="slider-poster-status" style="color:${statusColor}">${item.status}</span>
         </div>
       </div>
@@ -248,9 +248,15 @@
       return (track.querySelector('.slider-card')?.offsetWidth || 120) + 12;
     }
 
+    function getScrollLeft(idx) {
+      const card = track.querySelectorAll('.slider-card')[idx];
+      if (!card) return idx * getCardW();
+      return card.offsetLeft - (track.clientWidth - card.offsetWidth) / 2;
+    }
+
     function goTo(idx) {
       autoIdx = (idx + featured.length) % featured.length;
-      track.scrollTo({ left: autoIdx * getCardW(), behavior: 'smooth' });
+      track.scrollTo({ left: getScrollLeft(autoIdx), behavior: 'smooth' });
       dotsEl.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === autoIdx));
       const cur = dotsEl.querySelector('.slider-counter-current');
       if (cur) {
@@ -269,7 +275,13 @@
     }
 
     track.addEventListener('scroll', debounce(() => {
-      const idx = Math.round(track.scrollLeft / getCardW());
+      const center = track.scrollLeft + track.clientWidth / 2;
+      const cards = [...track.querySelectorAll('.slider-card')];
+      let idx = 0, minDist = Infinity;
+      cards.forEach((c, i) => {
+        const dist = Math.abs(c.offsetLeft + c.offsetWidth / 2 - center);
+        if (dist < minDist) { minDist = dist; idx = i; }
+      });
       if (idx !== autoIdx) {
         autoIdx = idx;
         dotsEl.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === autoIdx));
