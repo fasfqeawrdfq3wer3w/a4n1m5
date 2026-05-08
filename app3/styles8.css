@@ -119,7 +119,7 @@ input[type="text"]::-ms-clear{display:none}
 .slider-card {
   flex: 0 0 clamp(130px, 36vw, 170px);
   height: clamp(190px, 52vw, 240px);
-  scroll-snap-align: start;
+  scroll-snap-align: center;
   border-radius: var(--radius);
   overflow: hidden;
   position: relative;
@@ -251,4 +251,16 @@ input[type="text"]::-ms-clear{display:none}
 }
 .slider-counter-current.animating {
   animation: counterPop 0.22s cubic-bezier(0.4,0,0.2,1) forwards;
+}
+
+/* ── Slider centrado ── */
+.slider-track {
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 50%;
+}
+/* Badge eps arriba */
+.slider-poster-eps {
+  position: absolute;
+  top: 8px; right: 8px;
+  z-index: 3;
 }
