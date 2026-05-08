@@ -258,8 +258,8 @@ body {
 }
 
 .modal-x-btn {
-    background: var(--bg3);
-    border: none;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
     color: var(--text2);
     width: 30px;
     height: 30px;
@@ -268,12 +268,22 @@ body {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: background var(--transition)
+    flex-shrink: 0;
+    transition: background 0.2s, transform 0.15s;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .modal-x-btn:active {
-    background: var(--bg4)
+    background: rgba(255, 255, 255, 0.12);
+    transform: scale(0.92);
 }
+
+.modal-x-btn:focus-visible {
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 0 2px var(--accent);
+}
+
 
 .modal-divider {
     height: 1px;
