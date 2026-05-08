@@ -215,15 +215,32 @@
       const div = document.createElement('div');
       div.className = 'slider-card';
       div.dataset.id = item.id;
+      const statusColor = item.status === 'En emisión' ? '#00e676' : item.status === 'En pausa' ? '#ffb300' : '#aaa';
       div.innerHTML = `<div class="slider-poster">
       <div class="slider-poster-bg" style="background:${posterBg(item)}"></div>
       <div class="slider-poster-overlay"></div>
-      <div class="slider-poster-eps">${item.episodes} eps</div>
+      <div class="slider-poster-info">
+        <div class="slider-poster-title">${item.title}</div>
+        <div class="slider-poster-meta">
+          <span class="slider-poster-eps">${item.episodes} eps</span>
+          <span class="slider-poster-status" style="color:${statusColor}">${item.status}</span>
+        </div>
+      </div>
+      <div class="slider-poster-num">${String(i + 1).padStart(2, '0')}</div>
     </div>`;
       frag.appendChild(div);
     });
     track.appendChild(frag);
-    dotsEl.innerHTML = featured.map((_, i) => `<div class="dot${i === 0 ? ' active' : ''}" data-dot="${i}"></div>`).join('');
+    // Numeración estilo "01 / 06" con barra de progreso
+    dotsEl.innerHTML = `
+      <div class="slider-counter">
+        <span class="slider-counter-current">01</span>
+        <span class="slider-counter-sep">/</span>
+        <span class="slider-counter-total">${String(featured.length).padStart(2, '0')}</span>
+      </div>
+      <div class="slider-progress-bar"><div class="slider-progress-fill"></div></div>
+      <div class="slider-dots-row">${featured.map((_, i) => `<div class="dot${i === 0 ? ' active' : ''}" data-dot="${i}"></div>`).join('')}</div>
+    `;
 
     let autoIdx = 0;
 
@@ -235,6 +252,15 @@
       autoIdx = (idx + featured.length) % featured.length;
       track.scrollTo({ left: autoIdx * getCardW(), behavior: 'smooth' });
       dotsEl.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === autoIdx));
+      const cur = dotsEl.querySelector('.slider-counter-current');
+      if (cur) {
+        cur.classList.remove('animating');
+        void cur.offsetWidth; // reflow para reiniciar animación
+        cur.textContent = String(autoIdx + 1).padStart(2, '0');
+        cur.classList.add('animating');
+      }
+      const fill = dotsEl.querySelector('.slider-progress-fill');
+      if (fill) fill.style.width = ((autoIdx + 1) / featured.length * 100) + '%';
     }
 
     function startAuto() {
@@ -247,6 +273,15 @@
       if (idx !== autoIdx) {
         autoIdx = idx;
         dotsEl.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === autoIdx));
+        const cur = dotsEl.querySelector('.slider-counter-current');
+        if (cur) {
+          cur.classList.remove('animating');
+          void cur.offsetWidth;
+          cur.textContent = String(autoIdx + 1).padStart(2, '0');
+          cur.classList.add('animating');
+        }
+        const fill = dotsEl.querySelector('.slider-progress-fill');
+        if (fill) fill.style.width = ((autoIdx + 1) / featured.length * 100) + '%';
       }
     }, 80), { passive: true });
 
