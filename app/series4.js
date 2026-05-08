@@ -26,7 +26,7 @@ if (btnBack) {
             window.history.back();
         } else {
             // Fallback si no hay historial (ej: abierto directo)
-            location.href = 'go:home';
+            location.href = SERIE.url || 'go:home';
         }
     });
 }
