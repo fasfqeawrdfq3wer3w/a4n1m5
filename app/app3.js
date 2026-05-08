@@ -280,7 +280,7 @@ function recentCardHTML(item, num) {
 function renderHomeFavs() {
   const container = $('home-favs');
   if (!container) return;
-  const favItems = DATA.filter(d => isFav(d.id));
+  const favItems = visibleDATA().filter(d => isFav(d.id));
   if (!favItems.length) {
     container.innerHTML = '<div style="padding:8px 0;font-size:13px;color:var(--text3)">Aún no tienes favoritos</div>';
     return;
@@ -353,7 +353,7 @@ function renderCategories() {
 
 function renderCatLibrary(cat) {
   $('cat-library-title').textContent = cat === 'H' ? 'Contenido H' : cat;
-  const items = DATA.filter(d => d.category === cat || (d.category && d.category.split(/,\s*/).map(c=>c.trim()).includes(cat)));
+  const items = visibleDATA().filter(d => d.category === cat || (d.category && d.category.split(/,\s*/).map(c=>c.trim()).includes(cat)));
   if (items.length === 0) {
     $('cat-library-grid').innerHTML = `
       <div class="empty-state" style="grid-column:1/-1;padding:60px 20px;text-align:center">
@@ -403,7 +403,7 @@ function renderFavorites() {
   const countEl = $('mylist-count');
 
   // Un item aparece en Mi Lista si tiene favorito O tiene estado de seguimiento
-  let items = DATA.filter(d => isFav(d.id) || getWatchStatus(d.id));
+  let items = visibleDATA().filter(d => isFav(d.id) || getWatchStatus(d.id));
 
   const filter = state.favFilter;
   if (filter === 'fav') {
