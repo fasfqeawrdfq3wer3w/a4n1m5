@@ -130,17 +130,17 @@
         const newUrl = params.toString() ? `${url.pathname}?${params.toString()}` : url.pathname;
         window.history.replaceState({}, '', newUrl);
 
-        // Save to sessionStorage too
-        sessionStorage.setItem(APP_STATE_KEY, JSON.stringify(newParams));
+        // Save to localStorage too
+        localStorage.setItem(APP_STATE_KEY, JSON.stringify(newParams));
     }
 
     function handleURLParams() {
         let p = getURLParams();
         const hasRelevantParams = p.id || p.cat || p.q || p.view;
 
-        // If no relevant URL params, try sessionStorage
+        // If no relevant URL params, try localStorage
         if (!hasRelevantParams) {
-            const saved = sessionStorage.getItem(APP_STATE_KEY);
+            const saved = localStorage.getItem(APP_STATE_KEY);
             if (saved) {
                 try {
                     const sp = JSON.parse(saved);
