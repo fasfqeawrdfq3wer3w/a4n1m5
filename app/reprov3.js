@@ -231,6 +231,76 @@
     let hlsInstance = null;
     let hideTimer = null;
     let renderCount = 0;
+    let resumeToastShown = false; // Evitar mostrar el toast múltiples veces
+
+    // ── Utilidades de URL ─────────────────────────────────────
+    function getEpisodeFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        let data = {};
+
+        // 1. Datos completos en JSON Base64 (param 'd' o 'data')
+        const d = params.get('d') || params.get('data');
+        if (d) {
+            try {
+                // Corregir posibles espacios por + en base64
+                const decoded = atob(d.trim().replace(/ /g, '+'));
+                const json = JSON.parse(decoded);
+                
+                // SEGURIDAD: Los parámetros de Telegram NO deben ser inyectados vía URL
+                delete json.REPORT_CONFIG;
+                
+                data = json;
+                console.log('📦 Datos cargados desde URL (Base64):', data);
+            } catch (e) {
+                console.error('❌ Error parseando param "d":', e);
+            }
+        }
+
+        // 2. Overrides individuales (tienen prioridad sobre el JSON de base64)
+        if (params.has('id')) data.serieId = params.get('id');
+        if (params.has('serieId')) data.serieId = params.get('serieId');
+        if (params.has('title')) data.title = params.get('title');
+        if (params.has('serie')) data.serieTitle = params.get('serie');
+        if (params.has('poster')) data.poster = params.get('poster');
+        if (params.has('background')) data.poster = params.get('background');
+        if (params.has('num')) data.num = params.get('num');
+        if (params.has('season')) data.seasonIdx = parseInt(params.get('season'), 10);
+        if (params.has('next')) data.nextUrl = params.get('next');
+        if (params.has('prev')) data.prevUrl = params.get('prev');
+
+        // 3. Servidores por idioma nativos (ej: ?latino=url1,url2&subtitulado=url3)
+        const langParams = ['latino', 'subtitulado', 'sub', 'ingles', 'castellano'];
+        const foundLangs = [];
+        langParams.forEach(l => {
+            if (params.has(l)) {
+                const servers = params.get(l).split(',').map((url, i) => ({
+                    name: 'Servidor ' + (i + 1),
+                    url: url.trim()
+                }));
+                foundLangs.push({
+                    name: l === 'sub' ? 'Subtitulado' : l.charAt(0).toUpperCase() + l.slice(1),
+                    servers: servers
+                });
+            }
+        });
+        
+        if (foundLangs.length > 0) {
+            data.langs = foundLangs;
+        } else if (params.has('url')) {
+            // Fallback para URL simple si no hay idiomas procesados
+            const url = params.get('url');
+            if (!data.langs) {
+                data.langs = [{
+                    name: 'Latino',
+                    servers: [{ name: 'Servidor URL', url: url }]
+                }];
+            } else {
+                data.langs[0].servers[0].url = url;
+            }
+        }
+
+        return Object.keys(data).length > 0 ? data : null;
+    }
 
     // ── Progreso / continuar viendo ───────────────────────────
     function markAsWatched() {
@@ -293,8 +363,6 @@
         console.log('📖 Progreso leído:', key, '→', t + 's');
         return t > 5 ? t : 0;
     }
-
-    let resumeToastShown = false; // Evitar mostrar el toast múltiples veces
 
     function showResumeToast(savedTime, onResume, onDismiss) {
         if (resumeToastShown) return; // Ya se mostró
@@ -705,7 +773,17 @@
 
     // ── Init ──────────────────────────────────────────────────
     function init() {
-        if (!window.EPISODE) return;
+        // Alimentar EPISODE desde parámetros de URL si existen
+        const urlData = getEpisodeFromUrl();
+        if (urlData) {
+            window.EPISODE = Object.assign(window.EPISODE || {}, urlData);
+            console.log('🚀 Configuración final (merged):', window.EPISODE);
+        }
+
+        if (!window.EPISODE) {
+            console.warn('⚠️ No se encontró configuración (window.EPISODE)');
+            return;
+        }
         const ep = window.EPISODE;
 
         document.title = ep.title + ' - ANiGo';
