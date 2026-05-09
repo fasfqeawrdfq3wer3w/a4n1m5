@@ -260,8 +260,13 @@
             try {
                 // Corregir posibles espacios por + en base64
                 const rawDecoded = atob(d.trim().replace(/ /g, '+'));
-                // Decodificar caracteres especiales UTF-8 de forma segura
-                const decoded = decodeURIComponent(escape(rawDecoded));
+                let decoded;
+                try {
+                    // Decodificar caracteres especiales UTF-8 de forma segura
+                    decoded = decodeURIComponent(escape(rawDecoded));
+                } catch(err) {
+                    decoded = rawDecoded;
+                }
                 const json = JSON.parse(decoded);
 
                 // SEGURIDAD: Los parámetros de Telegram NO deben ser inyectados vía URL
