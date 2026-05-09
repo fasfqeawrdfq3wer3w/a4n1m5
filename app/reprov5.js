@@ -238,17 +238,35 @@
         const params = new URLSearchParams(window.location.search);
         let data = {};
 
-        // 1. Datos completos en JSON Base64 (param 'd' o 'data')
-        const d = params.get('d') || params.get('data');
-        if (d) {
+        // 0. Datos comprimidos en LZ-String (param 'lz')
+        const lz = params.get('lz');
+        if (lz) {
+            try {
+                const decompressed = typeof LZString !== 'undefined' ? LZString.decompressFromEncodedURIComponent(lz) : null;
+                if (decompressed) {
+                    const json = JSON.parse(decompressed);
+                    delete json.REPORT_CONFIG;
+                    data = json;
+                    console.log('📦 Datos cargados desde URL (LZ-String):', data);
+                }
+            } catch (e) {
+                console.error('❌ Error parseando param "lz":', e);
+            }
+        }
+
+        // 1. Datos completos en JSON Base64 (param 'd' o 'data') - Fallback
+        const d = (params.get('d') || params.get('data'));
+        if (d && Object.keys(data).length === 0) {
             try {
                 // Corregir posibles espacios por + en base64
-                const decoded = atob(d.trim().replace(/ /g, '+'));
+                const rawDecoded = atob(d.trim().replace(/ /g, '+'));
+                // Decodificar caracteres especiales UTF-8 de forma segura
+                const decoded = decodeURIComponent(escape(rawDecoded));
                 const json = JSON.parse(decoded);
-                
+
                 // SEGURIDAD: Los parámetros de Telegram NO deben ser inyectados vía URL
                 delete json.REPORT_CONFIG;
-                
+
                 data = json;
                 console.log('📦 Datos cargados desde URL (Base64):', data);
             } catch (e) {
@@ -295,7 +313,7 @@
                 });
             }
         });
-        
+
         if (foundLangs.length > 0) {
             data.langs = foundLangs;
         } else if (params.has('url')) {
@@ -324,7 +342,7 @@
 
         const key = 'watched_' + ep.serieId;
         const epNum = String(ep.num);
-        
+
         // Intentar inferir temporada del URL si seasonIdx parece incorrecto (e.g. siempre 0)
         let sIdx = ep.seasonIdx ?? 0;
         const currentUrl = window.location.href;
@@ -334,7 +352,7 @@
             sIdx = parseInt(sMatch[1], 10) - 1;
             console.log(`ℹ️ Temporada inferida del URL: ${sIdx + 1} (index ${sIdx})`);
         }
-        
+
         const sIdxStr = String(sIdx);
         console.log(`🔍 Intentando marcar visto: ${ep.serieId} | S:${sIdxStr} | E:${epNum}`);
 
@@ -814,11 +832,16 @@
         if (ep.type === 'movie') {
             $('player-footer').style.display = 'none';
         } else {
-            prevBtn.disabled = !ep.prevUrl;
+            const isFirstEpisode = (ep.seasonIdx == 0 && ep.num == 1);
+            prevBtn.disabled = isFirstEpisode;
             prevBtn.onclick = () => {
-                if (ep.prevUrl) {
+                if (!isFirstEpisode) {
                     markAsWatched();
-                    location.href = ep.prevUrl;
+                    if (ep.prevUrl) {
+                        location.href = ep.prevUrl;
+                    } else {
+                        history.back();
+                    }
                 }
             };
             nextBtn.disabled = !ep.nextUrl;
