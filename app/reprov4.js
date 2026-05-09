@@ -260,13 +260,25 @@
         if (params.has('id')) data.serieId = params.get('id');
         if (params.has('serieId')) data.serieId = params.get('serieId');
         if (params.has('title')) data.title = params.get('title');
+        if (params.has('titulo')) data.title = params.get('titulo');
         if (params.has('serie')) data.serieTitle = params.get('serie');
+        if (params.has('serieTitle')) data.serieTitle = params.get('serieTitle');
         if (params.has('poster')) data.poster = params.get('poster');
         if (params.has('background')) data.poster = params.get('background');
         if (params.has('num')) data.num = params.get('num');
+        if (params.has('numero')) data.num = params.get('numero');
         if (params.has('season')) data.seasonIdx = parseInt(params.get('season'), 10);
+        if (params.has('tipo')) data.type = params.get('tipo');
+        if (params.has('type')) data.type = params.get('type');
+        if (params.has('intro')) data.introEnd = parseInt(params.get('intro'), 10);
+        if (params.has('skip')) data.introEnd = parseInt(params.get('skip'), 10);
+        if (params.has('serie_url')) data.serieUrl = params.get('serie_url');
+
         if (params.has('next')) data.nextUrl = params.get('next');
+        if (params.has('siguiente')) data.nextUrl = params.get('siguiente');
         if (params.has('prev')) data.prevUrl = params.get('prev');
+        if (params.has('anterior')) data.prevUrl = params.get('anterior');
+        if (params.has('previo')) data.prevUrl = params.get('previo');
 
         // 3. Servidores por idioma nativos (ej: ?latino=url1,url2&subtitulado=url3)
         const langParams = ['latino', 'subtitulado', 'sub', 'ingles', 'castellano'];
