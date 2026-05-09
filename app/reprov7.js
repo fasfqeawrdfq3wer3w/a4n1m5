@@ -235,7 +235,11 @@
 
     // ── Utilidades de URL ─────────────────────────────────────
     function getEpisodeFromUrl() {
-        const params = new URLSearchParams(window.location.search);
+        // Combinamos search y hash para leer URLs antiguas (?) y nuevas (#)
+        const rawSearch = window.location.search.substring(1);
+        const rawHash = window.location.hash.substring(1);
+        const combined = rawSearch + (rawSearch && rawHash ? '&' : '') + rawHash;
+        const params = new URLSearchParams(combined);
         let data = {};
 
         // 0. Datos comprimidos en LZ-String (param 'lz')
@@ -808,6 +812,8 @@
 
     // ── Init ──────────────────────────────────────────────────
     function init() {
+        // Escuchar cambios de hash (Siguiente/Anterior) para forzar recarga
+        window.addEventListener('hashchange', () => window.location.reload());
         // Alimentar EPISODE desde parámetros de URL si existen
         const urlData = getEpisodeFromUrl();
         if (urlData) {
